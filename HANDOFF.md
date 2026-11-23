@@ -31,6 +31,11 @@ gradlew.bat :relay:run --args="--port 8443"
 
 **Blockers:** none. No `origin` remote exists, so there is nothing to push yet.
 
+**Final verification (12:20)**
+- `gradlew.bat test --rerun-tasks` re-executed all 24 tasks from scratch: green.
+- The standalone jar on the documented default port served `wss://127.0.0.1:8443`, answered
+  `/healthz`, printed a stable certificate pin and released the port on stop.
+
 ## 2026-11-23 12:10 PM -0600 — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: v1 end-to-end integration — JVM fake-phone harness, integration fixes, `docs/QUICKSTART.md`
 (task 06), branch `pb/v1-integration`.

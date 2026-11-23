@@ -1,9 +1,9 @@
-# Handoff
+﻿# Handoff
 
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
-## 2026-11-23 11:14–12:00 — ds2 / deepseek/deepseek-flash — task 02 relay server (`:relay`)
+## 2026-11-23 11:14â€“12:00 â€” ds2 / deepseek/deepseek-flash â€” task 02 relay server (`:relay`)
 
 **Done (acceptance criteria met, `:relay:test` green: 43 tests)**
 - Embeddable relay API in `dev.phonebridge.relay`: `Relay.start(RelayConfig): RelayHandle`, `stop()`,
@@ -26,7 +26,7 @@ what is left, how to build/test, blockers.
 - `relay_move`: old relay emits `relay_moved {new_url, token, expires}` with per-peer one-time HMAC
   tokens (shared `moveSecret`); the new relay accepts each token once (`token_used` on replay) and
   `RelayClient` follows automatically and keeps exchanging messages.
-- Standalone: `gradlew.bat :relay:run --args="--port 8443"`, `gradlew.bat :relay:shadowJar` →
+- Standalone: `gradlew.bat :relay:run --args="--port 8443"`, `gradlew.bat :relay:shadowJar` â†’
   `relay/build/libs/phonebridge-relay-all.jar` (verified: serves `/healthz`, generated cert + pin,
   persisted identity). Both were smoke-tested from the command line.
 - Docs: `relay/README.md` (embedding, standalone, config table, security notes),
@@ -67,12 +67,12 @@ Tests are on loopback with port 0, so they do not need the SDK, a network, or fr
 **Blockers:** none. No `origin` remote exists, so commits are local only (no push); nothing was merged
 while blocked.
 
-## 2026-11-23 11:30 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
+## 2026-11-23 11:30 AM â€” ds3 â€” deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: Android AccessibilityService + command executor (`android/` only), branch
 `pb/android-accessibility`.
 
 **Done**
-- `android/executor-core` — new plain Kotlin/JVM module, always included in `settings.gradle.kts`
+- `android/executor-core` â€” new plain Kotlin/JVM module, always included in `settings.gradle.kts`
   (no `android.*` imports, builds and tests on this SDK-less PC):
   - `Request`/`Response`/`ProtocolError`/`ErrorCode` (exact `docs/PROTOCOL.md` codes and shapes) and
     `PermissionLevel` + `BotSession`. `:core` still only has `Version.kt`, so these are small local
@@ -80,18 +80,18 @@ Task: Android AccessibilityService + command executor (`android/` only), branch
     boundary (`Request`/`Response` are plain data classes).
   - `Command` table (level, needs-control, needs-accessibility per command), `KeyCommand` mapping to
     the `GLOBAL_ACTION_*` codes, `Args` typed reader (`bad_args` instead of crashes).
-  - `CommandExecutor` (order: unknown_cmd → permission_denied → accessibility_disabled →
-    not_controller → bad_args → device call; device refusal = `internal`).
+  - `CommandExecutor` (order: unknown_cmd â†’ permission_denied â†’ accessibility_disabled â†’
+    not_controller â†’ bad_args â†’ device call; device refusal = `internal`).
   - `ControlArbiter` (one controller, FIFO queue, 120 s idle auto-release, promotion on release).
   - `UiTreeSnapshot` (protocol `Node` export, ids = child-index paths `0`/`0.1`/`0.3.0`, `max_depth`,
     `visible_only`), `OpenAppResolver` (package/label with ambiguity reporting), `SettingsDeepLink`
     constants, `DeviceControl` seam + `FullCommandHandler` for the Full-level commands.
   - 74 JVM tests with a recording `FakeDevice`.
-- `android/app` — AGP 9.0.1 application module (`dev.phonebridge.app`, minSdk 26, target/compileSdk
+- `android/app` â€” AGP 9.0.1 application module (`dev.phonebridge.app`, minSdk 26, target/compileSdk
   36), manifest, resources, and:
   - `BridgeAccessibilityService` + `res/xml/accessibility_service_config.xml`
     (`canRetrieveWindowContent`, `flagReportViewIds`, `canPerformGestures`, `canTakeScreenshot`, no
-    `flagRequestFilterKeyEvents`); UI tree → `UiNode`; tap/long_press/swipe via `dispatchGesture`;
+    `flagRequestFilterKeyEvents`); UI tree â†’ `UiNode`; tap/long_press/swipe via `dispatchGesture`;
     `type` via `ACTION_SET_TEXT` + clipboard-paste fallback; `key` via `performGlobalAction`;
     `open_app` via PackageManager launch intents; screenshot via `takeScreenshot` on API 30+.
   - `AndroidDeviceControl` (the `DeviceControl` implementation), `BridgeRuntime` (single
@@ -119,13 +119,13 @@ Task: Android AccessibilityService + command executor (`android/` only), branch
 **Protocol notes (additive only, `docs/PROTOCOL.md` untouched because the core lane owns it)**
 - `Node` includes an extra `visible` boolean.
 - `long_press` also accepts `node_id` (like `tap`); node-centred long-press.
-- `request_control` queued → `{granted:false, position:<n>}` in the result, in addition to the
+- `request_control` queued â†’ `{granted:false, position:<n>}` in the result, in addition to the
   `queue_position` event.
 - `screenshot` result shape unchanged (`mime`, `width`, `height`, `data_b64`).
 
 **How to test**
 - `gradlew.bat :android:executor-core:test` (74 tests: permission denials, not_controller,
-  accessibility_disabled, bad_args, each command routed to the fake device, node-id → centre mapping,
+  accessibility_disabled, bad_args, each command routed to the fake device, node-id â†’ centre mapping,
   control queue/idle timeout, app-label resolution).
 - `gradlew.bat :core:test` must stay green (it does).
 - `gradlew.bat :android:app:tasks` configures the Android module without an SDK.
@@ -134,7 +134,7 @@ Task: Android AccessibilityService + command executor (`android/` only), branch
 - Android SDK + accepted licences to build the APK (user decision, not installed by this bot).
 - Transport/relay lane: `BridgeRuntime.handle(session, request)` is the seam to call.
 
-## 2026-11-23 — setup (Grok Bot)
+## 2026-11-23 â€” setup (Grok Bot)
 - Repo scaffolded: docs/SPEC.md, docs/PROTOCOL.md, docs/BOT_WORKFLOW.md, Gradle wrapper (9.2.1) with
   `core` and `relay` JVM modules (empty), folders android/, mcp/, desktop/.
 - Toolchain on this PC: JDK 25 (Temurin), Node, Git. **No Android SDK** (no ANDROID_HOME, no
@@ -142,3 +142,54 @@ Task: Android AccessibilityService + command executor (`android/` only), branch
   `settings.gradle.kts` only when an SDK is found; until then write the Android code and keep
   JVM-testable logic in plain Kotlin classes with JVM unit tests.
 - No GitHub remote yet (gh not logged in). Push steps are skipped until `origin` exists.
+## 2026-11-23 11:26 â€” ds1 (deepseek-flash / DeepSeek V4.1 Flash) â€” task 01: protocol, crypto, pairing (`core/`)
+
+**Done** (branch `pb/protocol-pairing`, all in `core/` plus `docs/PROTOCOL.md`, `docs/THIRD_PARTY.md`):
+
+- **Message model** for everything in PROTOCOL.md: `RelayEnvelope` (+hello/route/ping/pong/error/
+  relay_moved/pair_lookup/pair_offer), `PairingOffer`/`PairRequest`/`PairResult`, typed app
+  `AppRequest`/`AppResponse`/`AppEvent`, all 17 commands with typed args, typed results, error codes,
+  `PermissionLevel` (VIEW < CONTROL < FULL) and the `CommandType`/`Commands.requiredLevel` table.
+  kotlinx.serialization plugin added to `core/build.gradle.kts`; one shared `PbJson` config.
+- **Identities**: X25519 key pairs, `peer_id` = lowercase base32(SHA-256(pub)[0..16)) = 26 chars,
+  fingerprint = first 8 chars as `ABCD-EFGH`; stored identity JSON with key/public mismatch rejection.
+- **E2E**: real Noise `XX` (`Noise_XX_25519_ChaChaPoly_SHA256`, rev 34) implemented on Bouncy Castle
+  primitives so it runs on Android API 26+: per-direction keys, little-endian 64-bit counters, strict
+  in-order processing (replays/reordering/tampering rejected without advancing the counter), prologue
+  `PhoneBridge/1/noise-xx`, 1-byte frame tags (0x01 handshake / 0x02 transport), key pinning helper.
+- **Pairing**: 32-byte one-time secret, 10-minute expiry, burn-on-use/burn-on-deny, `PairingManager`
+  (`createOffer`/`accept` -> `PendingApproval`/`approve(level)`/`deny`), sealed request/result with
+  HKDF-SHA256 + ChaCha20-Poly1305, direction + device-key AAD, bot-side `PairingClient`, short code
+  `7K4-Q9B` (Crockford base32, 5 data + CRC-5 check symbol, Oâ†’0 I/Lâ†’1 normalisation),
+  `phonebridge://pair?d=` links, `.pbpair` files, QR payload = link, `BotRegistry` with in-memory and
+  atomic JSON-file implementations.
+- **Control arbiter**: one controller, FIFO queue with positions, 120 s idle auto-release with
+  promotion, `touch`, `kickAll`, state callback.
+- **Chunking**: 256 KiB chunks (1 MiB ceiling), 64 MiB payload cap, `chunk` events with whole-payload
+  SHA-256, out-of-order reassembly, duplicate/gap/oversize rejection; sizes proven well under the
+  8 MiB transport and 16 MiB relay caps.
+- **Relay hello proof**: documented DH-MAC challenge (`relay_pub` + `nonce`) so a peer proves ownership
+  of its X25519 key without signatures; `HelloAuth` implements both sides.
+- **Docs**: `docs/PROTOCOL.md` rewritten to the exact bytes/labels implemented; `docs/THIRD_PARTY.md`
+  added (kotlinx.serialization Apache-2.0, Bouncy Castle 1.87 MIT-style); short-code examples in
+  README/SPEC corrected from `7K4-Q9M` to a code that passes its own check symbol (`7K4-Q9B`).
+- 104 JVM tests covering every acceptance criterion (JSON round-trips for every message type,
+  handshake + both encryption directions, tampered/replayed ciphertext, short-code check symbol and
+  normalisation, link/file round-trip, 10-minute expiry + single use with an injected clock,
+  permission table, arbiter queue/idle/kickAll, chunk/reassemble).
+
+**Left / for other lanes**
+
+- Relay (02): implement `hello` with `relay_pub` + `nonce` and verify `HelloAuth.proof`, then route
+  `pair_lookup`/`pair_offer` and the sealed `pair_request`/`pair_result` route envelopes.
+- Android (03): wire `PairingManager` + `JsonFileBotRegistry` into the pairing UI, `E2ESession` into the
+  foreground service, `ControlArbiter` + `Commands.check` into the command executor. The APK build is
+  pending an Android SDK (not installed on this PC); no Android code was written by this task.
+- Bot/MCP (04): drive the documented JSON on top of `AppMessages`; `core/README.md` has copy-paste
+  snippets.
+- Nice-to-have follow-ups: JSON schema files under `docs/`, negative tests for very large UI trees,
+  desktop-side `SecureChannel` concurrency notes.
+
+**How to test**: `gradlew.bat :core:test` (JDK 25 on PATH, no Android SDK needed).
+
+**Blockers**: none. No `origin` remote exists yet, so nothing was pushed (commits only).

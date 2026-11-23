@@ -60,11 +60,22 @@ class CommandExecutor(
         }
 
         if (command.needsControl && !control.holdsControl(session.botId)) {
-            return Response.failure(
-                request.id,
-                ErrorCode.NOT_CONTROLLER,
-                "${session.name} does not hold control; send request_control first",
-            )
+            // docs/PROTOCOL.md 7: exactly one bot drives; a bot that asked and is waiting is `busy`
+            // with its position, one that never asked is `not_controller`.
+            val position = control.queuePosition(session.botId)
+            return if (position != null) {
+                Response.failure(
+                    request.id,
+                    ErrorCode.BUSY,
+                    "${session.name} is queued at position $position; another bot holds control",
+                )
+            } else {
+                Response.failure(
+                    request.id,
+                    ErrorCode.NOT_CONTROLLER,
+                    "${session.name} does not hold control; send request_control first",
+                )
+            }
         }
 
         val response = try {
@@ -121,7 +132,8 @@ class CommandExecutor(
         val format = ScreenshotFormat.fromWire(args.string("format") ?: ScreenshotFormat.PNG.wire)
             ?: throw BadArgsException("format", "expected png or jpeg")
         val quality = args.int("quality")?.also { requireInRange("quality", it, 1, 100) }
-        val maxWidth = args.int("max_width")?.also { requireInRange("max_width", it, 1, 100_000) }
+        // docs/PROTOCOL.md 6.1: max_width 16..16384, the same range core's ScreenshotArgs validates.
+        val maxWidth = args.int("max_width")?.also { requireInRange("max_width", it, 16, 16_384) }
 
         // The accessibility screenshot API needs Android 11; older devices fall back to
         // MediaProjection, which needs an explicit user grant (projection_denied until then).
@@ -140,8 +152,9 @@ class CommandExecutor(
     }
 
     private fun uiTree(request: Request, args: Args): Response {
-        val maxDepth = args.int("max_depth")?.also { requireMin("max_depth", it, 0) }
-        val visibleOnly = args.booleanOr("visible_only", false)
+        val maxDepth = args.int("max_depth")?.also { requireInRange("max_depth", it, 1, 1000) }
+        // docs/PROTOCOL.md 6.1: visible_only defaults to true, the same default as core's UiTreeArgs.
+        val visibleOnly = args.booleanOr("visible_only", true)
         val fresh = UiTreeSnapshot.capture(device.captureUiTree(), maxDepth, visibleOnly)
         if (fresh.root == null) {
             snapshot = fresh
@@ -318,10 +331,6 @@ class CommandExecutor(
 
     private fun requireInRangeLong(field: String, value: Long, min: Long, max: Long) {
         if (value < min || value > max) throw BadArgsException(field, "expected $min..$max, got $value")
-    }
-
-    private fun requireMin(field: String, value: Int, min: Int) {
-        if (value < min) throw BadArgsException(field, "expected >= $min, got $value")
     }
 
     private fun requireMin(field: String, value: Long, min: Long) {

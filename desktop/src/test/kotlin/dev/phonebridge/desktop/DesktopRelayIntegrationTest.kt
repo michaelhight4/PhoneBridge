@@ -22,6 +22,7 @@ import dev.phonebridge.core.util.PbJson
 import dev.phonebridge.core.model.RelayEnvelope
 import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.desktop.device.ScreenStreamer
+import dev.phonebridge.desktop.app.DesktopBridge
 import dev.phonebridge.desktop.executor.BotSession
 import dev.phonebridge.desktop.executor.DesktopExecutor
 import dev.phonebridge.desktop.session.DesktopSessionHandler
@@ -215,5 +216,25 @@ class DesktopRelayIntegrationTest {
         assertEquals(offer.code, fromLink.code)
         assertEquals(offer.deviceId, fromFile.deviceId)
         assertTrue(B64Url.decode(fromFile.secret).size == 32)
+    }
+
+    @Test
+    fun aDesktopOfferCarriesTheHeartUrlAndPin() {
+        val bridgeDir = Files.createTempDirectory("pb-desktop-bridge").also { it.toFile().deleteOnExit() }
+        val bridge = DesktopBridge(
+            dataDir = bridgeDir,
+            log = {},
+            device = FakeDesktopDevice(),
+            screenSource = FakeDesktopDevice(),
+        )
+        try {
+            val offer = assertNotNull(bridge.createOffer(), "a pairing offer needs the heart")
+            assertTrue(offer.relay.startsWith("wss://"), "the heart uses TLS: ${offer.relay}")
+            val pin = assertNotNull(offer.relayPin, "the offer must carry the relay pin")
+            assertEquals(32, B64Url.decode(pin).size, "relay_pin is a SHA-256 value")
+            assertEquals(bridge.identity.peerId, offer.deviceId)
+        } finally {
+            bridge.stop()
+        }
     }
 }

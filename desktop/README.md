@@ -23,7 +23,8 @@ activity log in `%APPDATA%\PhoneBridge` by default.
   to hide it and Esc to dismiss; clicking it opens the window.
 - **Pairing**, all three ways: a QR code, the short code (`7K4-Q9B`), the `phonebridge://pair?` link,
   and a saved `.pbpair` file. Offers are one-time and expire after ten minutes; the short code is
-  published to the relay mailbox so a bot can look it up.
+  published to the relay mailbox so a bot can look it up, and the offer carries the relay's
+  certificate pin (`relay_pin`) so a self-signed heart is reachable.
 - **"Allow this bot?"**: the request's name, fingerprint and requested level; the user can only lower
   the level. Approving stores the bot; denying burns the offer.
 - **Bot list** like Bluetooth devices: name, fingerprint, permission level, on/off, last seen, unpair,

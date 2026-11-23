@@ -40,6 +40,12 @@ class DesktopHeart(
     override var currentUrl: String? = null
         private set
 
+    /** Pin for the client connection in use (the heart's own fingerprint, or the chosen relay's pin). */
+    @Volatile
+    private var clientPin: String? = null
+
+    override fun currentPin(): String? = synchronized(lock) { relay?.fingerprint ?: clientPin }
+
     /** Starts the heart here (preferring port 8443) and points this PC's client at it. */
     override fun startHere(): String {
         synchronized(lock) {
@@ -129,6 +135,7 @@ class DesktopHeart(
 
     private fun pointClientAt(url: String, tlsPin: String?) {
         client?.stop()
+        clientPin = tlsPin
         val newClient = RelayClient(
             RelayClientConfig(
                 url = url,

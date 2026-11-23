@@ -19,6 +19,12 @@ interface HeartControl {
 
     /** URL the outbound client is on, or null while it is (re)connecting. */
     val currentUrl: String?
+
+    /**
+     * Certificate pin (base64url SHA-256) for the relay in use, so a pairing offer can carry
+     * `relay_pin` and a bot can reach a self-signed relay. Null for a plain `ws://` relay.
+     */
+    fun currentPin(): String?
 }
 
 sealed interface RelayResult {
@@ -49,6 +55,16 @@ class HeartController(
     fun offerUrl(): String? = when (cached.host) {
         HeartHost.THIS_PC -> startHeartIfNeeded()
         HeartHost.CUSTOM_URL -> cached.url
+    }
+
+    /** Certificate pin to put in a pairing offer, so the bot can reach a self-signed heart. */
+    fun offerPin(): String? = when (cached.host) {
+        HeartHost.THIS_PC -> {
+            startHeartIfNeeded()
+            heart.currentPin()
+        }
+
+        HeartHost.CUSTOM_URL -> cached.tlsPin
     }
 
     /** "Move heart here" and `relay_move {to:"this"}`. */

@@ -154,7 +154,7 @@ class DesktopBridge(
             log("pairing needs a relay; the heart is not running and no relay URL is set")
             return null
         }
-        val offer = pairing.createOffer(relayUrl, desktopDevice.name)
+        val offer = pairing.createOffer(relayUrl, desktopDevice.name, heartController.offerPin())
         val offerJson = PbJson.encodeToJsonElement(PairingOffer.serializer(), offer).jsonObject
         heartImpl.pairStore(offer.code, offerJson)
         activity.record(

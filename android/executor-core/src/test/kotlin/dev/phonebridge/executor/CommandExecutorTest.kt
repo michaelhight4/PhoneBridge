@@ -58,6 +58,23 @@ class CommandExecutorTest {
     }
 
     @Test
+    fun `a queued bot is busy with its position instead of not_controller`() {
+        takeControl(Fixtures.controlBot("holder"))
+        val queued = run(Fixtures.controlBot("waiter"), "request_control")
+        assertEquals(false, queued.result?.get("granted"))
+        assertEquals(1, queued.result?.get("position"))
+
+        val response = executor.execute(
+            Fixtures.controlBot("waiter"),
+            Request(id = "req-2", cmd = "tap", args = mapOf("x" to 1, "y" to 2)),
+        )
+        assertFalse(response.ok)
+        assertEquals(ErrorCode.BUSY, response.error?.code)
+        assertTrue(response.error?.message?.contains("position 1") == true)
+        assertTrue(device.taps.isEmpty())
+    }
+
+    @Test
     fun `accessibility commands fail when the service is off`() {
         device.accessibilityEnabled = false
         takeControl()
@@ -98,8 +115,10 @@ class CommandExecutorTest {
         assertEquals("android.widget.FrameLayout", root["cls"])
         assertEquals(listOf(0, 0, 1080, 2400), root["bounds"])
 
+        // visible_only defaults to true (docs/PROTOCOL.md 6.1), so the hidden node is absent while
+        // the ids of the remaining nodes stay the structural paths the bot can tap.
         val children = requireNotNull(root["children"] as? List<*>)
-        assertEquals(4, children.size)
+        assertEquals(3, children.size)
         val edit = requireNotNull(children[0] as? Map<*, *>)
         assertEquals("0.0", edit["id"])
         assertEquals(true, edit["editable"])
@@ -111,7 +130,7 @@ class CommandExecutorTest {
         assertEquals(true, button["clickable"])
 
         // Nested node keeps its pre-order id.
-        val nested = requireNotNull(children[3] as? Map<*, *>)
+        val nested = requireNotNull(children[2] as? Map<*, *>)
         val list = requireNotNull((nested["children"] as? List<*>)?.first() as? Map<*, *>)
         assertEquals("0.3.0", list["id"])
 
@@ -119,7 +138,7 @@ class CommandExecutorTest {
         val second = run(Fixtures.viewBot(), "ui_tree")
         val secondRoot = requireNotNull(second.result!!["root"] as? Map<*, *>)
         assertEquals(root["id"], secondRoot["id"])
-        assertEquals(6, executor.lastSnapshot()?.size)
+        assertEquals(5, executor.lastSnapshot()?.size)
     }
 
     @Test
@@ -132,8 +151,17 @@ class CommandExecutorTest {
 
         val visible = run(Fixtures.viewBot(), "ui_tree", "visible_only" to true)
         val visibleRoot = requireNotNull(visible.result!!["root"] as? Map<*, *>)
-        assertEquals(3, (visibleRoot["children"] as? List<*>)?.size) // hidden node and its subtree dropped
-        assertEquals(5, executor.lastSnapshot()?.size) // n0..n4
+        assertEquals(3, (visibleRoot["children"] as? List<*>)?.size) // hidden node dropped
+        assertEquals(5, executor.lastSnapshot()?.size) // n0, n1, n2, n4, n5
+
+        val everything = run(Fixtures.viewBot(), "ui_tree", "visible_only" to false)
+        val allRoot = requireNotNull(everything.result!!["root"] as? Map<*, *>)
+        assertEquals(4, (allRoot["children"] as? List<*>)?.size)
+        assertEquals(6, executor.lastSnapshot()?.size)
+
+        val tooDeep = run(Fixtures.viewBot(), "ui_tree", "max_depth" to 0)
+        assertFalse(tooDeep.ok)
+        assertEquals(dev.phonebridge.executor.ErrorCode.BAD_ARGS, tooDeep.error?.code)
     }
 
     @Test

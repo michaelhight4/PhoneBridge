@@ -29,10 +29,14 @@
       ],
       "properties": {
         "device": {
-          "type": "object"
+          "type": "string",
+          "description": "Device display name, e.g. Pixel 9."
         },
         "battery": {
-          "type": "object"
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Battery level in percent."
         },
         "screen_on": {
           "type": "boolean"
@@ -41,16 +45,19 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "peer_id of the bot in control, or null when nobody is."
         },
         "queue": {
           "type": "array",
           "items": {
-            "type": "object"
-          }
+            "type": "string"
+          },
+          "description": "peer_ids waiting for control, in FIFO order."
         },
         "shizuku": {
-          "type": "object"
+          "type": "boolean",
+          "description": "True when the Shizuku service is alive."
         }
       }
     }

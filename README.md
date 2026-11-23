@@ -23,8 +23,12 @@ Status: **pre-alpha, under active construction.** See [docs/SPEC.md](docs/SPEC.m
 | `relay/` | Embeddable relay ("heart") + standalone relay jar for a VPS |
 | `android/` | Android app (Kotlin, minSdk 26) |
 | `mcp/` | MCP server (TypeScript) + CLI test client |
+| `tests/e2e/` | JVM end-to-end harness: real relay + real core + fake phone |
 | `desktop/` | Desktop agent (phase 2) |
 | `docs/` | Spec, protocol, API, bot workflow |
+
+Start with [docs/QUICKSTART.md](docs/QUICKSTART.md): one command proves the whole v1 path, then the
+ten-minute path from APK to a paired bot.
 
 ## Safety
 

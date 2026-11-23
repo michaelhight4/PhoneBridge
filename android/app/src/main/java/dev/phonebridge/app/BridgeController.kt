@@ -195,8 +195,10 @@ class BridgeController(
     private fun createOffer(): PairingOffer {
         val relayUrl = relayController.offerUrl()
             ?: throw IllegalStateException("Choose where the heart runs before pairing")
-        ensureClient(relayUrl, relayHandle?.fingerprint ?: relayController.settings().tlsPin)
-        val offer = pairingManager.createOffer(relayUrl, AppStores.deviceName())
+        // The bot must pin a self-signed relay's certificate, so the offer has to carry it too.
+        val tlsPin = relayHandle?.fingerprint ?: relayController.settings().tlsPin
+        ensureClient(relayUrl, tlsPin)
+        val offer = pairingManager.createOffer(relayUrl, AppStores.deviceName(), relayPin = tlsPin)
         // Publish the offer to the relay's short-code mailbox, so a bot given `7K4-Q9B` can find it.
         runCatching {
             val json = PbJson.encodeToJsonElement(PairingOffer.serializer(), offer).jsonObject

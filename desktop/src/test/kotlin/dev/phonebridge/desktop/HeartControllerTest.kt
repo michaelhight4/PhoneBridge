@@ -23,6 +23,7 @@ class HeartControllerTest {
         var failStart = false
         var acceptRelay = true
         override var currentUrl: String? = "wss://fake:1"
+        var pin: String? = "heart-pin"
         var startedUrl = "wss://192.168.1.5:8443"
 
         override fun startHere(): String {
@@ -46,6 +47,8 @@ class HeartControllerTest {
             handOverTarget = newUrl
             return notified
         }
+
+        override fun currentPin(): String? = pin
     }
 
     private val log = InMemoryActivityLog()
@@ -59,6 +62,14 @@ class HeartControllerTest {
         assertEquals("wss://192.168.1.5:8443", offerUrl)
         assertEquals(offerUrl, controller.offerUrl(), "the heart must not be started twice")
         assertEquals(1, heart.starts)
+    }
+
+    @Test
+    fun anOfferCarriesTheRelayCertificatePin() {
+        assertEquals("heart-pin", controller.offerUrl()?.let { controller.offerPin() })
+
+        controller.setCustomRelay("wss://relay.example:8443", "custom-pin")
+        assertEquals("custom-pin", controller.offerPin())
     }
 
     @Test

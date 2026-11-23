@@ -1,9 +1,11 @@
 {
   "v": 1,
   "relay": "wss://host:8443",
-  "device_id": "abcdefghijklmnopqrstuvwx23",
-  "device_pub": "QUJDRA==",
+  "device_id": "cc6wtab6rgspd48jah4bqcjv9w",
+  "device_pub": "QUJDRA",
   "secret": "c2VjcmV0c2VjcmV0c2VjcmV0c2VjcmV0c2VjcmV0c2VjcmV0",
-  "code": "7K4-Q9M",
-  "exp": 1790000000
+  "code": "7K4-Q9B",
+  "exp": 1790000000,
+  "device_name": "Pixel 9",
+  "relay_pin": "z_PVtgBEWLVZtZSJmtVN0fovCbdI5kL8uvI51QLIA7Q"
 }

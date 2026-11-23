@@ -5,15 +5,14 @@ import dev.phonebridge.core.ProtocolException
 import dev.phonebridge.core.Version
 import dev.phonebridge.core.identity.PeerIds
 import dev.phonebridge.core.model.PermissionLevel
+import dev.phonebridge.core.util.AtomicFiles
 import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.core.util.PbJsonPretty
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.io.IOException
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 
 /**
  * One paired bot, as shown in the device's Bluetooth-style list: name, key, last seen, on/off switch,
@@ -191,10 +190,6 @@ class JsonFileBotRegistry(
         val temp = file.resolveSibling(file.fileName.toString() + ".tmp")
         // Files.writeString is Java 11+; write bytes so this also runs on Android API 26.
         Files.write(temp, json.toByteArray(Charsets.UTF_8))
-        try {
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (e: AtomicMoveNotSupportedException) {
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING)
-        }
+        AtomicFiles.replace(temp, file)
     }
 }

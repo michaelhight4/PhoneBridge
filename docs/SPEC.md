@@ -42,7 +42,7 @@ Published on GitHub and itch.io.
 ### 3. Pairing
 - Three equivalent ways:
   - **QR code** shown on the device.
-  - **Short code** like `7K4-Q9M` (Crockford base32, 6 chars + check), entered into / pasted to the bot.
+  - **Short code** like `7K4-Q9B` (Crockford base32, 6 chars + check), entered into / pasted to the bot.
   - **Link** `phonebridge://pair?...` or an exported **pairing file** (`.pbpair` JSON) the user sends
     to their bot in chat.
 - Pairing secrets are **one-time** and **expire after 10 minutes**.

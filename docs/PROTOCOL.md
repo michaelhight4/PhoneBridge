@@ -162,13 +162,17 @@ Created on the device; one-time; expires 10 minutes after creation.
 ```json
 { "v": 1, "relay": "wss://host:8443", "device_id": "<peer_id>", "device_pub": "<b64url>",
   "secret": "<b64url 32 random bytes>", "code": "7K4-Q9B", "exp": 1790000600,
-  "device_name": "Pixel 9" }
+  "device_name": "Pixel 9", "relay_pin": "<b64url SHA-256 of the relay certificate>" }
 ```
 
 - `exp` is **unix seconds**, creation time + 600. `device_name` is optional but recommended.
+- `relay_pin` is optional and additive (see `relay/PROTOCOL-RELAY.md`): when the relay terminates TLS
+  with a self-signed certificate it publishes the base64url SHA-256 of its DER certificate, and the bot
+  pins it in its relay client. Without it a bot cannot reach a self-signed relay, because the system
+  trust store does not know the certificate. A relay behind a normal CA certificate omits it.
 - The receiver validates: `v == 1`, `relay` starts with `ws://` or `wss://`, `secret` is 32 bytes,
   `device_pub` is 32 bytes, `device_id == peer_id(device_pub)`, `code` passes the check symbol,
-  `exp > 0`.
+  `exp > 0`, and `relay_pin` (when present) decodes to 32 bytes.
 - The device **burns** the secret on the first successful decrypt of a `pair_request`, or at `exp`,
   whichever comes first. A burned secret is dead even if the user never answered.
 

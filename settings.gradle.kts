@@ -21,6 +21,10 @@ include(":relay")
 // builds and tests without an Android SDK. This is always part of the build.
 include(":android:executor-core")
 
+// Plain Kotlin/JVM module: the screen/service state logic (pairing countdown, approvals, bot list,
+// activity log, relay choice, onboarding checklist). No android.* imports, so it is JVM-tested here.
+include(":android:ui-core")
+
 // Android modules only build when an Android SDK is available.
 val sdkFound = System.getenv("ANDROID_HOME") != null || System.getenv("ANDROID_SDK_ROOT") != null ||
     file("local.properties").let { it.exists() && it.readText().contains("sdk.dir") }

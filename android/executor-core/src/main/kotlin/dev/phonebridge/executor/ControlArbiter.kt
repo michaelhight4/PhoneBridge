@@ -77,6 +77,21 @@ class ControlArbiter(
         }
     }
 
+    /**
+     * "Kick everyone" from the device notification: drops the controller and the whole queue.
+     * Returns every bot that lost control or a queue slot, so the caller can close their sessions,
+     * send `kicked` and log it. Paired keys are untouched (unpairing is a separate user action).
+     */
+    fun kickAll(): List<String> = synchronized(lock) {
+        val kicked = ArrayList<String>(queue.size + 1)
+        holderId?.let { kicked.add(it) }
+        kicked.addAll(queue)
+        holderId = null
+        queue.clear()
+        lastActivityMs = 0L
+        kicked
+    }
+
     /** 1-based queue position, or null when the bot is not waiting. */
     fun queuePosition(botId: String): Int? = synchronized(lock) {
         val index = queue.indexOf(botId)

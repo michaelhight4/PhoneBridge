@@ -5,6 +5,7 @@ import dev.phonebridge.executor.BotSession
 import dev.phonebridge.executor.CommandExecutor
 import dev.phonebridge.executor.ControlArbiter
 import dev.phonebridge.executor.ErrorCode
+import dev.phonebridge.executor.FullCommandHandler
 import dev.phonebridge.executor.Request
 import dev.phonebridge.executor.Response
 
@@ -38,6 +39,16 @@ object BridgeRuntime {
     }
 
     fun executorOrNull(): CommandExecutor? = commandExecutor
+
+    /**
+     * The relay/Shizuku commands can only be served once the foreground service and the embedded
+     * relay exist, which is later than app start. The service installs the handler here.
+     */
+    fun setFullHandler(handler: FullCommandHandler?) {
+        synchronized(lock) {
+            commandExecutor?.full = handler
+        }
+    }
 
     /** Execute one application-level request for a paired bot. */
     fun handle(session: BotSession, request: Request): Response {

@@ -87,6 +87,20 @@ Nothing was copied in from another project for the Android tasks; the accessibil
 gesture dispatch, command routing, permission checks, control queue, pairing countdown, bot list,
 notification and log logic are written here.
 
+## Desktop agent (`desktop/`)
+
+| Library | Version | Licence | Used for |
+| --- | --- | --- | --- |
+| `:core` (this repo) | MIT | Protocol types, pairing, Noise `XX` sessions, control arbiter, chunking. |
+| `:relay` (this repo) | MIT | Embedded relay ("the heart") and the reconnecting `RelayClient`. |
+| [ZXing core](https://github.com/zxing/zxing) (`com.google.zxing:core`) | 3.5.3 | Apache-2.0 | Encoding the `phonebridge://pair?...` link into the pairing QR bitmap on the desktop (the same library the Android app already uses). |
+| Kotlin standard library + `kotlin("test")` | 2.3.0 | Apache-2.0 | Language runtime and JVM tests. |
+| JDK desktop APIs - Swing, AWT `Robot`, `javax.imageio`, `java.net.http.HttpClient`, `java.lang.ProcessBuilder` | JDK 17+ | GPLv2+CE (part of the JDK, not linked as a separate library) | Tray icon and windows, screen capture, mouse/keyboard, PNG/JPEG encoding, installer downloads, PowerShell/cmd processes. |
+
+Nothing was copied from another project for the desktop task. The command executor, control rules,
+stream timing, shell runner, file operations, installer command lines, activity log, settings store and
+relay controller are written here and unit tested on the JVM with fakes.
+
 ## Protocol schemas and test tools (`protocol/`, `tests/`)
 
 | Library | Version | Licence | Used for |

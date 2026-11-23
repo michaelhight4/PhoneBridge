@@ -3,6 +3,94 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 12:07 PM — ds1 — deepseek/deepseek-flash (DeepSeek V4.1 Flash) — task: desktop agent phase 2, Windows first (`desktop/` only)
+
+**Branch** `pb/desktop-agent`. New Gradle module `:desktop` (Kotlin/JVM 17, `application` plugin,
+`kotlinx-serialization` plugin) included in `settings.gradle.kts`. Reuses `:core` (protocol, pairing,
+Noise `XX`, control arbiter, chunking) and `:relay` (embedded relay + `RelayClient`); the only new
+dependency is ZXing core 3.5.3 (Apache-2.0) for the pairing QR, already listed for Android in
+`docs/THIRD_PARTY.md`, which now has a desktop section. The UI is Swing/`java.awt`, so no Compose or
+extra UI toolkit is downloaded.
+
+**Done**
+
+- **Tray app** (`ui/TrayApp`): tray icon with menu (open, pair, bots, activity, show/hide indicator,
+  kick everyone, quit), tooltip and first menu line always naming the bot in control, and a
+  `TrayIcon.displayMessage` balloon on every controller change.
+- **Always-visible indicator** (`ui/IndicatorWindow`): small always-on-top strip, "Claude is in
+  control" / "No bot in control" / "· N waiting", click opens the window, X hides it, Esc dismisses it.
+- **Main window** (`ui/MainWindow`): Status, Pair a bot (QR + short code + link + Copy + Save `.pbpair`
+  + Cancel + ten-minute countdown + "Allow this bot?" table with Allow/Deny/level), Bots (name,
+  fingerprint, level, on/off, last seen, unpair, change level, kick everyone), Activity log (per-bot
+  filter, refresh, clear), Relay (this PC / custom URL + pin, Apply, Move heart here). Closing the
+  window or pressing Esc hides it to the tray.
+- **Pairing / sessions** (`session/DesktopSessionHandler`): relay envelopes → pairing requests against
+  live offers, Noise `XX` responder with the bot's paired key pinned, decrypted `AppRequest` →
+  executor → sealed `AppResponse`, `queue_position` on request_control, `control_changed` broadcast,
+  sealed `kicked` on disable/unpair/kick, `relay_moved` broadcast.
+- **Executor** (`executor/DesktopExecutor`): `unknown_cmd` → `permission_denied` → `not_controller` →
+  `bad_args` → device call, then `touch` for Control/Full activity. Implements every protocol command
+  that makes sense on a PC plus the desktop extensions below.
+- **Device layer** (`device/`): AWT `Robot` capture for all monitors (`screens`, `screenshot` with
+  inline ≤2 MiB or `chunk` events, `screen_stream` frames at a capped fps), Robot mouse/keyboard
+  (click, hold, drag, move, wheel incl. Shift+wheel, Unicode paste-with-clipboard-restore, key combos),
+  `ShellRunner` (PowerShell/cmd, UTF-8 console, hard timeout, 8 MiB/256 KiB caps, stdout/stderr on their
+  own threads), `FileOps` (list/read/write/delete with caps), `Installer` (winget, msiexec, exe launch,
+  https-only download), all behind seams so tests use `FakeDesktopDevice`.
+- **State and storage** (`state/`, `app/`): activity log (newest first, 1000-entry cap, atomic
+  `activity.v1.json`, payload-free descriptions), `DesktopState` snapshots, settings
+  (`desktop.v1.json`), identity (`identity.v1.json`, role device), bot registry (`bots.v1.json` via
+  core `JsonFileBotRegistry`), and `DesktopHeart` (embedded relay on 8443 or an ephemeral port with a
+  self-signed cert + pin, own client over loopback, persisted move secret, `moveTo` hand-over,
+  `relay_move` both directions: `to:"this"` starts the heart and broadcasts `relay_moved`, a `wss://`
+  target hands over, a peer id answers an error).
+- **Tests: 92 JVM tests, all green** in `desktop/src/test` - key-combo parsing and the `key` mapping,
+  stream timing/limits/stop-early, shell runner (fake process caps/timeout + real PowerShell and cmd),
+  file ops, installer command building and https rules, activity log persistence and payload-free
+  details, state transitions, settings, heart controller rules, the full executor command matrix with a
+  fake device, a Noise/pairing/kick session suite with a real bot-side session, QR rendering, and a
+  **full-stack test** (`DesktopRelayIntegrationTest`) that pairs by short code through a real embedded
+  relay, completes a real Noise handshake and gets a `status` answer in under a second.
+
+**Protocol notes (additive only; `docs/PROTOCOL.md` untouched because other lanes own it)**
+
+New desktop-only command names, all enforced by the desktop's permission table:
+`screens` (view), `screen_stream` (view), `move` (control), `drag` (control), `scroll` (control),
+`key_combo` (control), `install` (full). `screen_stream` sends a new event name `frame` with
+`{stream_id, index, total, mime, width, height, data_b64}`. `screenshot` accepts an optional
+`screen_id` (unknown keys are ignored by `core`, so this is additive). `ui_tree`, `settings` and
+`install_apk` answer `unknown_cmd` with a message that they are Android-only. Nothing existing was
+renamed or reshaped. `core`'s `FilesResult` has no truncation flag, so the 2000-entry listing cap is
+silent (the Android handoff's claimed `truncated` field is not in `core`).
+
+**How to test**
+
+```
+gradlew.bat :desktop:test                          # 92 tests, headless, no display or network needed
+gradlew.bat :desktop:run --args="--smoke-ms 6000"  # starts tray + indicator + heart, quits cleanly
+gradlew.bat :desktop:run                           # the real app (quit from the tray)
+```
+The acceptance runs were done on this PC: `:desktop:run` came up with the tray icon, the indicator, the
+embedded heart on `wss://<lan>:8443` and this PC's client connected over loopback, printed no errors,
+and quit cleanly (nothing left running, no listener on 8443 afterwards). `:desktop:test` is green.
+
+**Left / next**
+
+- Screen capture and input need an interactive desktop session; a locked screen or a service session
+  cannot capture pixels (Windows rule, documented in `desktop/README.md`).
+- macOS/Linux need four seams re-implemented (`AwtScreenSource`, `RobotInput`, the shell command wrapper
+  and the installer commands); the rest is OS-neutral.
+- `relay_move` to another *peer id* is not implemented (the bot can pass that peer's relay URL instead).
+- No screen recording codec yet: streaming is JPEG/PNG frames as `frame` events, not a video stream.
+- `open_app` starts a program and does not wait for it to become foreground.
+- The desktop's session handler duplicates the phone's `SessionHandler` shape (different executor
+  types). A shared transport module in `:core` would remove the copy if another lane wants it.
+- `install` launches `.exe` installers interactively; unattended `.exe` flags differ per vendor and are
+  left to the user.
+
+**Blockers:** none. Merged to `main` with `--ff-only` after `:desktop:test` and the repo-wide `test`
+task passed. No `origin` remote exists, so nothing was pushed (commits only).
+
 ## 2026-11-23 11:52 — ds1 — deepseek/deepseek-flash (DeepSeek V4.1 Flash) — task: Shizuku integration (`android/` only)
 
 **Branch** `pb/android-shizuku`. **Done** (JVM-testable layer, app wiring, docs):

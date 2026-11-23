@@ -142,12 +142,20 @@ data class TapArgs(
 
 @Serializable
 data class LongPressArgs(
-    val x: Int,
-    val y: Int,
+    val x: Int? = null,
+    val y: Int? = null,
+    @SerialName("node_id")
+    val nodeId: String? = null,
     val ms: Long? = null,
 ) : CommandArgs {
     override fun validate() {
-        check(x >= 0 && y >= 0) { "coordinates must not be negative" }
+        val hasPoint = x != null || y != null
+        if (nodeId != null) {
+            check(!hasPoint) { "long_press takes either x/y or node_id, not both" }
+        } else {
+            check(x != null && y != null) { "long_press needs x and y, or node_id" }
+            check(x!! >= 0 && y!! >= 0) { "coordinates must not be negative" }
+        }
         ms?.let { check(it in 1..60_000) { "ms must be 1..60000" } }
     }
 }
@@ -311,6 +319,8 @@ data class UiNode(
     val resId: String? = null,
     /** `[left, top, right, bottom]`, exactly four entries. */
     val bounds: List<Int> = emptyList(),
+    /** Whether the node is currently visible; optional so older senders can omit it. */
+    val visible: Boolean? = null,
     val clickable: Boolean = false,
     val focusable: Boolean = false,
     val editable: Boolean = false,

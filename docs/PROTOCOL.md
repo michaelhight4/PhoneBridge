@@ -231,7 +231,7 @@ Permission levels are ordered **View < Control < Full**. `Commands.requiredLevel
 | `ui_tree` | view | `{max_depth?, visible_only?}` | `{root: Node}` |
 | `notifications` | view | `{since?}` | `{items:[{pkg,title,text,time}]}` |
 | `tap` | control | `{x,y}` or `{node_id}` | `{}` |
-| `long_press` | control | `{x,y,ms?}` | `{}` |
+| `long_press` | control | `{x,y,ms?}` or `{node_id, ms?}` | `{}` |
 | `swipe` | control | `{x1,y1,x2,y2,ms?}` | `{}` |
 | `type` | control | `{text, node_id?}` | `{}` |
 | `key` | control | `{key:"back\|home\|recents\|notifications\|quick_settings\|lock\|enter\|power_dialog"}` | `{}` |
@@ -248,7 +248,8 @@ Argument rules enforced by `core` (violations are `bad_args`):
 
 - `screenshot.format` is `png` or `jpeg`; `quality` 1..100; `max_width` 16..16384.
 - `ui_tree.max_depth` 1..1000; `visible_only` defaults to `true`.
-- `tap` takes `x`+`y` **or** `node_id`, never both, never neither.
+- `tap` takes `x`+`y` **or** `node_id`, never both, never neither; `long_press` follows the same rule
+  plus an optional `ms`.
 - `long_press.ms` and `swipe.ms` 1..60000; `swipe` needs two different points.
 - `open_app` takes exactly one of `package`/`label`; `install_apk` exactly one of `url`/`data_b64`
   (https URLs only, and an inline APK needs `name`).
@@ -262,8 +263,8 @@ Results:
 - `screenshot` inline: `{mime:"image/png", width, height, data_b64:"<b64url of the image>"}`.
 - `screenshot` chunked: `{mime, width, height, chunked:true, chunk_id, total, size, sha256}`; the pixels
   arrive as `chunk` events (section 8).
-- `ui_tree`: `Node = {id, cls, text, desc, res_id, bounds:[l,t,r,b], clickable, focusable, editable,
-  children:[]}`. `bounds` always has four integers.
+- `ui_tree`: `Node = {id, cls, text, desc, res_id, bounds:[l,t,r,b], visible?, clickable, focusable,
+  editable, children:[]}`. `bounds` always has four integers; `visible` is optional.
 - `notifications`: items carry `pkg`, `title`, `text`, `time` (epoch millis).
 - `request_control`: `{granted:true}` or `{granted:false, position:n}`; a queued bot also gets a
   `queue_position` event when its position changes.

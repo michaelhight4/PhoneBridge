@@ -249,7 +249,7 @@ class ProtocolSerializationTest {
                 focusable = true,
                 editable = false,
                 children = listOf(
-                    UiNode(id = "child", cls = "Button", text = "OK", bounds = listOf(10, 10, 200, 100), clickable = true),
+                    UiNode(id = "child", cls = "Button", text = "OK", bounds = listOf(10, 10, 200, 100), visible = true, clickable = true),
                 ),
             ),
         ),

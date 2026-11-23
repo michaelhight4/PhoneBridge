@@ -97,6 +97,8 @@ The app module is not included without an SDK, so `assembleDebug` was not run.
   permission; the high-priority notification still works.
 
 **Blockers**
+- The device identity is stored in app-private `identity.v1.json`; wrapping it with the Android
+  Keystore is still a follow-up (documented in `docs/PROTOCOL.md` as the app's job).
 - Android SDK (and licence acceptance) to build the APK — user decision, not installed by this bot.
 - No `origin` remote exists yet, so all commits are local only.
 

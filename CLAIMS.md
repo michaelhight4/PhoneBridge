@@ -7,5 +7,5 @@ One line per claimed task: `lane | task | branch | claimed (America/Chicago) | s
 - ds3 | android app skeleton + accessibility service + command executor (`android/`) | pb/android-accessibility | 2026-11-23 11:15 AM | done (JVM tests green, 74 tests; APK build pending Android SDK)
 - iceman | JSON Schemas, conformance tests, mock device (protocol/, tests/, docs/TESTING.md) | pb/schemas-mock-device-tests | 2026-11-23 11:16 -0600 | done
 - iceman | CI, security and release docs (.github/, SECURITY.md, CONTRIBUTING.md, docs/ITCH_PAGE.md, docs/USER_GUIDE.md) | pb/ci-security-docs | 2026-11-23 12:36 -0600 | done
-- iceman | MediaProjection screenshots path (android/) | pb/android-mediaprojection | 2026-11-23 12:50 -0600 | in progress
+- iceman | MediaProjection screenshots path (android/) | pb/android-mediaprojection | 2026-11-23 12:50 -0600 | done (executor-core chooser+param tests green; Android scaffolding + manifest updates; MediaProjection capture impl pending on-device work noted in HANDOFF)
 - ds3 | android foreground service, pairing UI, bot list, permissions, notifications (`android/`) | pb/android-service-pairing-ui | 2026-11-23 12:05 PM | done (ui-core 39 JVM tests green, app sources complete; APK build pending Android SDK)

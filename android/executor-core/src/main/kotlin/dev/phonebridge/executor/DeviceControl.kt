@@ -102,6 +102,9 @@ interface DeviceControl {
     /** Accessibility screenshot (`takeScreenshot`, API 30+) or MediaProjection once available. */
     fun captureScreenshot(format: ScreenshotFormat, quality: Int?, maxWidth: Int?): Screenshot?
 
+    /** True when a MediaProjection capture path is granted/ready (separate from accessibility). */
+    fun mediaProjectionReady(): Boolean = false
+
     /** Notifications posted at or after [sinceEpochMs] (all of them when null). */
     fun readNotifications(sinceEpochMs: Long?): List<NotificationItem>
 

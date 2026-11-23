@@ -1,6 +1,9 @@
 package dev.phonebridge.app
 
 import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import dev.phonebridge.executor.BotSession
 import dev.phonebridge.executor.CommandExecutor
 import dev.phonebridge.executor.ControlArbiter
@@ -26,7 +29,20 @@ object BridgeRuntime {
     @Volatile
     private var commandExecutor: CommandExecutor? = null
 
+    @Volatile
+    private var appContext: Context? = null
+
+    @Volatile
+    private var mediaProjectionResultCode: Int? = null
+
+    @Volatile
+    private var mediaProjectionData: Intent? = null
+
+    @Volatile
+    private var mediaProjection: MediaProjection? = null
+
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (commandExecutor != null) return
         synchronized(lock) {
             if (commandExecutor == null) {
@@ -64,5 +80,43 @@ object BridgeRuntime {
     /** Called when a bot unpairs, disconnects or is kicked: it must not keep or hold a queue slot. */
     fun onBotDisconnected(botId: String) {
         control.forget(botId)
+    }
+
+    fun setMediaProjectionResult(resultCode: Int, data: Intent) {
+        mediaProjectionResultCode = resultCode
+        mediaProjectionData = data
+        // Drop old projection if any.
+        runCatching { mediaProjection?.stop() }
+        mediaProjection = null
+    }
+
+    fun clearMediaProjection() {
+        mediaProjectionResultCode = null
+        mediaProjectionData = null
+        runCatching { mediaProjection?.stop() }
+        mediaProjection = null
+    }
+
+    fun hasMediaProjectionConsent(): Boolean {
+        return mediaProjectionResultCode != null && mediaProjectionData != null
+    }
+
+    fun getOrCreateMediaProjection(): MediaProjection? {
+        val ctx = appContext ?: return null
+        val code = mediaProjectionResultCode ?: return null
+        val data = mediaProjectionData ?: return null
+        mediaProjection?.let { return it }
+        val manager = ctx.getSystemService(MediaProjectionManager::class.java) ?: return null
+        return try {
+            val mp = manager.getMediaProjection(code, data)
+            mediaProjection = mp
+            mp
+        } catch (_: SecurityException) {
+            clearMediaProjection()
+            null
+        } catch (_: Exception) {
+            clearMediaProjection()
+            null
+        }
     }
 }

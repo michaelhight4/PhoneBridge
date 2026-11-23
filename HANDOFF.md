@@ -3,6 +3,31 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 11:53 AM — iceman — Iceman Contributor Free — MediaProjection screenshots (android/), branch `pb/android-mediaprojection`
+
+Task: MediaProjection-based screenshot path (folder `android/` only).
+
+**Done**
+- `android/executor-core`: `DeviceControl.mediaProjectionReady()` default false; `CommandExecutor.screenshot()` now picks **accessibility takeScreenshot (API 30+)** when usable, otherwise allows **MediaProjection** if ready; reports `projection_denied` when neither is available (clearer messages). Added `max_width`/`quality` bounds validation tests in `CommandExecutorTest`. Updated `FakeDevice` with `mediaProjectionAvailable`.
+- `android/app`: `MediaProjectionConsentActivity` (screen-capture consent), `BridgeRuntime` stores/reuses MediaProjection consent (`setMediaProjectionResult`/`clearMediaProjection`/`getOrCreateMediaProjection`), `AndroidDeviceControl` reports `mediaProjectionReady()` and tries accessibility then MediaProjection fallback. Manifest: added `FOREGROUND_SERVICE_MEDIA_PROJECTION` permission, `BridgeService` `foregroundServiceType` includes `mediaProjection`, registered consent activity.
+- JVM tests updated/added for chooser + param validation.
+
+**Left / notes**
+- Full MediaProjection capture (ImageReader + VirtualDisplay, frame capture, scale to `max_width`, PNG/JPEG encode) is **not yet implemented** in `AndroidDeviceControl.captureScreenshotViaMediaProjection` (returns null / TODO). Re-consent handling on projection stop/revoke needs a callback wired to `BridgeRuntime.clearMediaProjection()` and user re-prompt flow.
+- “chunk via :core helper” for large screenshots: `core` has `Chunker`; integrating chunked screenshot responses/events through `SessionHandler`/protocol flow is a follow-up (current executor returns inline `Screenshot` map).
+- `mediaProjection` FGS type is declared in manifest/service; runtime behavior on API 34+ should be verified on device/emulator.
+
+**How to test (JVM, no Android SDK needed)**
+```
+.\gradlew.bat :android:executor-core:test
+.\gradlew.bat :core:test
+.\gradlew.bat :android:ui-core:test
+```
+All green in this worktree.
+
+**Blockers**
+- Android SDK not installed on this PC (APK build pending). MediaProjection end-to-end needs a device/emulator to validate capture path.
+
 ## 2026-11-23 11:45 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: Android foreground service, pairing UI, bot list, permissions and notifications (`android/`),
 branch `pb/android-service-pairing-ui`.

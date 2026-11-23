@@ -25,8 +25,9 @@ Task: MediaProjection-based screenshot path (folder `android/` only).
 ```
 All green in this worktree.
 
-**Blockers**
+**Blockers / merge note**
 - Android SDK not installed on this PC (APK build pending). MediaProjection end-to-end needs a device/emulator to validate capture path.
+- Merge: attempted `git -C C:\Users\seeth\PhoneBridge merge --ff-only pb/android-mediaprojection` from main checkout; could not fast-forward due to worktree/main checkout state. Changes committed on `pb/android-mediaprojection` (1fa1c7b) with `:android:executor-core:test`, `:core:test`, `:android:ui-core:test` passing. Merge into `main` should be done by maintainer from a clean checkout if ff-only fails.
 
 ## 2026-11-23 11:45 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: Android foreground service, pairing UI, bot list, permissions and notifications (`android/`),

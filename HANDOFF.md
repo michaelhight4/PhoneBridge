@@ -3,6 +3,38 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 3:05 PM: Android SDK, merges, full build, APK (Grok Bot)
+
+- **Android SDK installed** (Gary approved): official command-line tools
+  `commandlinetools-win-15859902_latest.zip` (SHA-256 verified against developer.android.com) in
+  `%LOCALAPPDATA%\Android\Sdk` (`cmdline-tools\latest`). Licences were accepted. Packages:
+  `platforms;android-36`, `build-tools;36.0.0`, `platform-tools` 37.0.3. User env `ANDROID_HOME`
+  and `ANDROID_SDK_ROOT` point at the SDK, so `settings.gradle.kts` now includes `:android:app`.
+  The build uses JDK 25 (Temurin 25.0.1). AGP 9.0.1, Gradle 9.2.1 and sdkmanager all work on it, so no second JDK was needed.
+- **Merged** `pb/android-mediaprojection` into main (4235cbc). Main's Shizuku wiring in `BridgeRuntime`
+  and the manifest was kept, and the MediaProjection consent state/activity was added alongside it. The
+  CLAIMS/HANDOFF entries are a union of both sides. Every `pb/*` branch is now merged (`git branch --no-merged main` is empty).
+- **APK build fix** (a74d7b0): an unescaped apostrophe in `bots_unpair_message` broke
+  `mergeDebugResources`. Added `gradle.properties` with more daemon metaspace (the full build used to
+  exhaust the default and restart the daemon).
+- **Results**: `gradlew.bat cleanTest check :android:app:assembleDebug` BUILD SUCCESSFUL, with 434 JVM tests
+  and 0 failures (core 113, relay 41, desktop 94, android:executor-core 134, android:ui-core 44,
+  e2e 8). `:android:app` has no unit tests yet (`testDebugUnitTest` NO-SOURCE). Android lint: 0 errors, 19
+  warnings. mcp: `npm run typecheck` clean, `npm test` 57/57 (6 files). tests/conformance 193/193 (2 files).
+  tests/mock-device: `node --test` finds 0 tests.
+- **APK**: `android/app/build/outputs/apk/debug/app-debug.apk`, 4,449,955 bytes,
+  `dev.phonebridge.app` 0.1.0 (versionCode 1), minSdk 26, targetSdk/compileSdk 36. Debug-signed. Build
+  outputs, `local.properties`, `*.apk`, `node_modules` and `dist` are gitignored.
+- **GitHub**: still no remote. `gh` is not logged in (Git Bash or PowerShell), and
+  `michaelhight4/PhoneBridge` does not exist yet. Next step: `gh auth login` and then
+  `gh repo create michaelhight4/PhoneBridge --public --source . --push`, or create an empty public
+  repo on github.com, then `git remote add origin https://github.com/michaelhight4/PhoneBridge.git`,
+  `git push -u origin main` and `git push origin --all`.
+- **Lane worktrees** `oc_runs\pb_*` were removed (all clean and merged; branches kept). The queue runner
+  recreates a lane's worktree on start.
+- **Left**: on-device testing (accessibility, MediaProjection capture, Shizuku), a release signing
+  config, app unit/instrumented tests and mock-device tests.
+
 ## 2026-11-23 12:16 — bigpickle lane (deepseek-v4.1-flash) — task 05: MCP server, CLI, bot client, API docs
 
 - Branch `pb/mcp-server-cli`, folders `mcp/` (+ `docs/API.md`, the `mcp/` section of

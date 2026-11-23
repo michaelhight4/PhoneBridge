@@ -2,7 +2,7 @@
   "v": 1,
   "type": "hello",
   "from": "abcdefghijklmnopqrstuvwx23",
-  "pub": "QUJDRA==",
+  "pub": "QUJDRA",
   "sig": "U0lH",
   "role": "toaster"
 }

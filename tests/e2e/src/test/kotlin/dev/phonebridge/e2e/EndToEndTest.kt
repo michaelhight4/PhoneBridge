@@ -361,6 +361,59 @@ class EndToEndTest {
         assertEquals("shizuku_unavailable", shell.error?.code)
     }
 
+    /**
+     * Writes the real messages this harness produced into the conformance hook's sample directory
+     * (`build/protocol-samples`), so `tests/conformance` validates genuine output against the
+     * published JSON Schemas. This is the cross-lane check that catches protocol drift.
+     */
+    @Test
+    fun `emits real protocol samples for the conformance suite`() {
+        val relay = relay()
+        val phone = phone(relay.url)
+        val offer = phone.newOffer()
+        val bot = bot("Sampler")
+
+        bot.connect(offer.relay, offer.relayPin)
+        bot.requestPairing(offer, PermissionLevel.CONTROL)
+        phone.awaitApproval(bot.identity.peerId)
+        val approval = phone.approve(bot.identity.peerId, PermissionLevel.CONTROL)
+        assertTrue(approval is ApprovalOutcome.Approved, "approval failed: $approval")
+        val pairResult = bot.awaitPairResult()
+        assertTrue(pairResult.ok)
+        bot.openSession()
+
+        assertTrue(bot.request(CommandType.REQUEST_CONTROL, RequestControlArgs).ok)
+        assertTrue(bot.request(CommandType.STATUS, StatusArgs).ok)
+        bot.awaitEvent("control_changed")
+
+        val directory = java.nio.file.Path.of("").toAbsolutePath()
+            .resolve("../..").normalize().resolve("build/protocol-samples")
+        java.nio.file.Files.createDirectories(directory)
+        fun write(name: String, json: String) {
+            java.nio.file.Files.writeString(directory.resolve(name), json)
+        }
+
+        write("pairing-offer.json", dev.phonebridge.core.util.PbJson.encodeToString(PairingOffer.serializer(), offer))
+        write("pair-request.json", assertNotNull(bot.lastPairRequestJson))
+        write("pair-result.json", dev.phonebridge.core.util.PbJson.encodeToString(
+            dev.phonebridge.core.model.PairResult.serializer(),
+            pairResult,
+        ))
+        write("request.json", assertNotNull(bot.lastRequestJson))
+        write("response.json", assertNotNull(bot.lastResponseJson))
+        write("event.json", assertNotNull(bot.lastEventJson))
+        write(
+            "envelope-route.json",
+            dev.phonebridge.core.model.EnvelopeCodec.encode(
+                dev.phonebridge.core.model.RelayEnvelope.route(
+                    from = bot.identity.peerId,
+                    to = phone.identity.peerId,
+                    payload = byteArrayOf(0x02, 0x01, 0x02, 0x03),
+                ),
+            ),
+        )
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private fun relay(tls: Boolean = false, moveSecret: String? = null): RelayHandle =

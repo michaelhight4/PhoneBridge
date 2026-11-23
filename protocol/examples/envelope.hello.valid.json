@@ -1,8 +1,9 @@
 {
   "v": 1,
   "type": "hello",
-  "from": "abcdefghijklmnopqrstuvwx23",
-  "pub": "QUJDRA==",
+  "from": "cc6wtab6rgspd48jah4bqcjv9w",
+  "pub": "QUJDRA",
   "sig": "U0lH",
-  "role": "device"
+  "role": "device",
+  "nonce": "bm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm9uY2U"
 }

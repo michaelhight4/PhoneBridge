@@ -7,11 +7,13 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ok", "granted_level", "device_name"],
+      "required": ["ok", "granted_level"],
       "properties": {
+        "v": { "const": 1 },
         "ok": { "const": true },
         "granted_level": { "enum": ["view", "control", "full"] },
-        "device_name": { "type": "string", "minLength": 1 }
+        "device_name": { "type": "string", "minLength": 1 },
+        "device_id": { "type": "string", "pattern": "^[0-9abcdefghjkmnpqrstvwxyz]{26}$" }
       }
     },
     {
@@ -19,8 +21,11 @@
       "additionalProperties": false,
       "required": ["ok", "reason"],
       "properties": {
+        "v": { "const": 1 },
         "ok": { "const": false },
-        "reason": { "type": "string", "minLength": 1 }
+        "reason": { "type": "string", "minLength": 1 },
+        "device_name": { "type": "string", "minLength": 1 },
+        "device_id": { "type": "string", "pattern": "^[0-9abcdefghjkmnpqrstvwxyz]{26}$" }
       }
     }
   ]

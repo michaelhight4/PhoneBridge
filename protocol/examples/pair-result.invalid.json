@@ -1,4 +1,5 @@
 {
+  "v": 1,
   "ok": true,
-  "granted_level": "control"
+  "granted_level": "admin"
 }

@@ -7,8 +7,10 @@
   "additionalProperties": false,
   "required": ["bot_name", "bot_pub", "requested_level"],
   "properties": {
+    "v": { "const": 1 },
     "bot_name": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "bot_pub": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" },
-    "requested_level": { "enum": ["view", "control", "full"] }
+    "bot_pub": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "requested_level": { "enum": ["view", "control", "full"] },
+    "bot_id": { "type": "string", "pattern": "^[0-9abcdefghjkmnpqrstvwxyz]{26}$" }
   }
 }

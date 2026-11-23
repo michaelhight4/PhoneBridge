@@ -45,6 +45,10 @@ Kotlin `:core` tests and TypeScript `mcp` tests can emit protocol samples for cr
 
 The conformance runner (`src/protocol-samples.test.js`) discovers them automatically when present. If a sample includes a `$schema` or `schema` field naming a schema file/id, that schema is used; otherwise the runner heuristically picks candidate schemas and requires at least one match.
 
+The end-to-end harness writes genuine samples there: run `.\gradlew.bat :e2e:test` first, then
+`npm test` in `tests/conformance`, and the published schemas validate real PhoneBridge output
+(pairing offer, pair request/result, application request/response/event, relay envelope).
+
 ## End-to-end harness (fake phone)
 
 `tests/e2e` (Gradle module `:e2e`) is the v1 acceptance run. It starts real relays, pairs a bot by

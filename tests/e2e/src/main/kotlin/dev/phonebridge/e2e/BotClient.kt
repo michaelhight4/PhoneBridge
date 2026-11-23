@@ -25,7 +25,6 @@ import dev.phonebridge.relay.client.RelayClientConfig
 import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A bot as an agent framework or the MCP server would be: it connects to the relay, pairs with one
@@ -48,13 +47,21 @@ class BotClient(
     private val responses = LinkedBlockingQueue<AppResponse>()
     private val events = LinkedBlockingQueue<AppEvent>()
 
-    private val requestIds = AtomicInteger()
-
     /** Events already received, in arrival order, for assertions after the fact. */
     val seenEvents = java.util.concurrent.CopyOnWriteArrayList<AppEvent>()
 
     /** Responses already received, in arrival order. */
     val seenResponses = java.util.concurrent.CopyOnWriteArrayList<AppResponse>()
+
+    /** The exact JSON of the last messages this bot produced/accepted, for the conformance samples. */
+    var lastRequestJson: String? = null
+        private set
+    var lastResponseJson: String? = null
+        private set
+    var lastEventJson: String? = null
+        private set
+    var lastPairRequestJson: String? = null
+        private set
 
     private var session: E2ESession? = null
     private var pendingOffer: PairingOffer? = null
@@ -126,6 +133,7 @@ class BotClient(
             requestedLevel = requestedLevel,
             botName = identity.name,
         )
+        lastPairRequestJson = sealed.requestJson()
         relayClient().sendRouteBytes(offer.deviceId, sealed.sealed)
     }
 
@@ -166,6 +174,7 @@ class BotClient(
     private fun send(request: AppRequest, timeoutMs: Long): AppResponse {
         val current = session ?: error("open a session with the phone first")
         check(current.isEstablished) { "the Noise session is not established yet" }
+        lastRequestJson = AppMessages.encodeRequest(request)
         relayClient().sendRouteBytes(deviceId, current.sealRequest(request))
         return awaitResponse(request.id, timeoutMs)
     }
@@ -201,7 +210,7 @@ class BotClient(
 
     private fun relayClient(): RelayClient = relay ?: error("connect() to a relay first")
 
-    private fun nextId(): String = "e2e-${identity.peerId.take(6)}-${requestIds.incrementAndGet()}"
+    private fun nextId(): String = java.util.UUID.randomUUID().toString()
 
     private fun awaitResponse(id: String, timeoutMs: Long): AppResponse {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -234,10 +243,12 @@ class BotClient(
                 val message = AppMessages.parse(current.openText(payload))
                 when (message) {
                     is AppMessage.Response -> {
+                        lastResponseJson = AppMessages.encodeResponse(message.response)
                         seenResponses.add(message.response)
                         responses.add(message.response)
                     }
                     is AppMessage.Event -> {
+                        lastEventJson = AppMessages.encodeEvent(message.event)
                         seenEvents.add(message.event)
                         events.add(message.event)
                     }

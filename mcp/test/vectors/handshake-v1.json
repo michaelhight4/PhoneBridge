@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "protocol": "PhoneBridge v0.1 handshake/1 (mcp concretization)",
+  "generatedBy": "mcp/scripts/gen-vectors.mjs",
+  "notes": [
+    "All keys are X25519 secret/public pairs encoded as hex.",
+    "peer_id = Crockford base32 (lowercase, no padding) of the first 16 bytes of SHA-256(public key).",
+    "fingerprint = the first 8 peer_id symbols uppercased and grouped ABCD-EFGH.",
+    "th = SHA-256('PhoneBridge/v1/handshake' || flags || e_bot || n_bot || s_bot || e_dev || n_dev || s_dev || [SHA-256(secret)]).",
+    "okm = BLAKE2b-512(key = th, data = dh1 || dh2 || dh3 || dh4) using libsodium crypto_generichash.",
+    "k_bot_to_device = okm[0..32), k_device_to_bot = okm[32..64).",
+    "Frames are XChaCha20-Poly1305 IETF with AAD 'PhoneBridge/v1/data' and a 24-byte nonce of 16 zero bytes followed by a big-endian 64-bit counter.",
+    "hs3 is sealed by the bot with counter 0, hs4 by the device with counter 0; app data starts at counter 1."
+  ],
+  "alphabet": "0123456789abcdefghjkmnpqrstvwxyz",
+  "identities": {
+    "bot": {
+      "secretKey": "727ddf5de589b75abf8bf76476f63d1815b8e01dc483a84f65affceb00bfc458",
+      "publicKey": "5f6d6b59c62f2960f2536377c8917b5c400294a6dbd321ba4eea2239241c362e",
+      "peerId": "mjnjsejn1vm7qyq47vzg120kmr",
+      "fingerprint": "MJNJ-SEJN"
+    },
+    "device": {
+      "secretKey": "5e2ee2b5ab4d1c246d2d768ff2af0ab7398fe86723e75721a9262a7c10897717",
+      "publicKey": "e24b55f5bd54a4f3f2a53922c606176c8665c52f766d4d0836c26c837cd01e24",
+      "peerId": "qkbwwr62xh74gvwkxwge77g370",
+      "fingerprint": "QKBW-WR62"
+    }
+  },
+  "ephemeral": {
+    "bot": {
+      "secretKey": "0190ff1e04468993b43b2dcbfae5ac898aca55d3442b1701a1c8429121332cbc",
+      "publicKey": "a99d5e6c2ad27a3180ddc3e236d8ccd87fc49171f75e80f968b62aaf4c58e548"
+    },
+    "device": {
+      "secretKey": "5a394367a19a7950f8db145ca77ff7e9e5c36757898b15066c443ab2255be9b9",
+      "publicKey": "cd11a4cd74030281949a630d5fc9de090d79bc458ba9e5dd6204450ee368be74"
+    },
+    "botNonce": "0f22a5d88cecdd303fb7bd97c46c9f5b18ec43ef8952bbba7297f67e1d49470a",
+    "deviceNonce": "a7e20c66762cc3fb895d6b704a11fdbe31543329e2efb924d6106e9206e69220"
+  },
+  "pairing": {
+    "secret": "71e795b43d063c0e2b639b00e2cc63366e70f05d71f6763d4a7e0d3535359bcb",
+    "code": "7K4-Q9Y",
+    "offer": {
+      "v": 1,
+      "relay": "wss://relay.example.test:8765",
+      "device_id": "qkbwwr62xh74gvwkxwge77g370",
+      "device_pub": "4ktV9b1UpPPypTkixgYXbIZlxS92bU0INsJsg3zQHiQ",
+      "secret": "ceeVtD0GPA4rY5sA4sxjNm5w8F1x9nY9Sn4NNTU1m8s",
+      "code": "7K4-Q9Y",
+      "exp": 1900000000
+    }
+  },
+  "handshake": {
+    "hs1": {
+      "t": "hs1",
+      "e": "qZ1ebCrSejGA3cPiNtjM2H_EkXH3XoD5aLYqr0xY5Ug",
+      "n": "DyKl2Izs3TA_t72XxGyfWxjsQ--JUru6cpf2fh1JRwo",
+      "bp": "X21rWcYvKWDyU2N3yJF7XEAClKbb0yG6TuoiOSQcNi4",
+      "p": 1
+    },
+    "hs2": {
+      "t": "hs2",
+      "e": "zRGkzXQDAoGUmmMNX8neCQ15vEWLqeXdYgRFDuNovnQ",
+      "n": "p-IMZnYsw_uJXWtwShH9vjFUMyni77kk1hBukgbmkiA",
+      "dp": "4ktV9b1UpPPypTkixgYXbIZlxS92bU0INsJsg3zQHiQ"
+    },
+    "transcriptHash": "8e26866b8c924e4b648f0bbaa9463a50699940cf7d5a77f5b83db0879dca21d6",
+    "dh": {
+      "dh1": "78eadf8b120926c5595cebdd141f8eca163212f9eb5b7c23c0334443cdc4c36e",
+      "dh2": "e5fc40cfe320446a3de26edfef5299b8a04c9c05906d389524cacad27e423725",
+      "dh3": "a354a7244345a4636903970462fa4449d532b1a98ea7efd54b08841cbaa79c41",
+      "dh4": "88fd6dba72ad5f31646ab14db7e270ffdbbb323b04b4aba47f4915eab9cc7748"
+    },
+    "ikm": "78eadf8b120926c5595cebdd141f8eca163212f9eb5b7c23c0334443cdc4c36ee5fc40cfe320446a3de26edfef5299b8a04c9c05906d389524cacad27e423725a354a7244345a4636903970462fa4449d532b1a98ea7efd54b08841cbaa79c4188fd6dba72ad5f31646ab14db7e270ffdbbb323b04b4aba47f4915eab9cc7748",
+    "okm": "b116c40684f21d62cccb484cad4a89f635035c9c1273aa3bba87013e0a1d554b8fedce275d325ede823684f652a5897ed45b4694d43c333182d6713b6cd48950",
+    "keys": {
+      "botToDevice": "b116c40684f21d62cccb484cad4a89f635035c9c1273aa3bba87013e0a1d554b",
+      "deviceToBot": "8fedce275d325ede823684f652a5897ed45b4694d43c333182d6713b6cd48950"
+    },
+    "hs3": {
+      "plaintext": "{\"t\":\"hs3\",\"th\":\"jiaGa4ySTktkjwu6qUY6UGmZQM99Wnf1uD2wh53KIdY\"}",
+      "nonce": "000000000000000000000000000000000000000000000000",
+      "ciphertext": "72c45e4776c632cf7a1cef14599117ea396a1d618c77cb77833634d7d1d750cc73d866111641b430f2c137d992e6dd1f6ab7329245b02e93094571ec13ed4f543d8e7ea39505e9e6b35053679e86"
+    },
+    "hs4": {
+      "plaintext": "{\"t\":\"hs4\",\"th\":\"jiaGa4ySTktkjwu6qUY6UGmZQM99Wnf1uD2wh53KIdY\"}",
+      "nonce": "000000000000000000000000000000000000000000000000",
+      "ciphertext": "b8e03480914c5c7b28ea67d997992627fd201fc8d43239e3316ea98ec650c469b0aac074ac8d44f03935a5b26ee4ff8dc83f3d991cb8c2087b22b81a502a0012365cc7140ee28cd492d86a44b8bc"
+    }
+  },
+  "frames": {
+    "tapRequest": {
+      "plaintext": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"cmd\":\"tap\",\"args\":{\"x\":540,\"y\":1200}}",
+      "counter": 1,
+      "nonce": "000000000000000000000000000000000000000000000001",
+      "ciphertext": "cbe971c660703179a799c8f25ea4d629a199a9b4d5417286cfd8deab8e99184688810ae80ff981706911284aacb9172fde6f43b535c1200fb4e656ce7db4f15e111c04beb1037706cef6f247b81473ad96a54cbf059db3b00f1362452be36f40855286"
+    },
+    "direct": {
+      "key": "botToDevice",
+      "plaintext": "PhoneBridge vector",
+      "aad": "PhoneBridge/v1/data",
+      "nonce": "000000000000000000000000000000000000000000000000",
+      "ciphertext": "598e450b29a628d52d59a6165b9c56a474723b760c32a0bb8cd66bd15a2a36efad5f"
+    }
+  },
+  "relay": {
+    "challenge": {
+      "secretKey": "d96ef6dfbac2810a86760f47d6ab4e14f5e1c8b737d6fb219bd68ea28f52e92c",
+      "publicKey": "7b81698e5588b5ba1edcf5505253ff6b1d7ab9e1dcc0dd3f0903102d53b8dc6e"
+    },
+    "proof": "ee1b65e8213bdc781a970651c0499130f0e16dfbcce21eb45a25aedb30b26d57",
+    "proofSeenByRelay": "ee1b65e8213bdc781a970651c0499130f0e16dfbcce21eb45a25aedb30b26d57"
+  }
+}

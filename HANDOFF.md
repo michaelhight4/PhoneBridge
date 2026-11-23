@@ -78,7 +78,8 @@ gradlew.bat :android:app:assembleDebug      # needs an Android SDK + accepted li
 - `files` has no append/resume; a read above 4 MiB and a write above the transport cap need a
   follow-up chunked-files protocol if anyone needs them.
 
-**Blockers:** none. No `origin` remote exists, so nothing was pushed (commits only).
+**Blockers:** none. Merged to `main` with `--ff-only` after `:core`, `:relay`, `:android:executor-core`
+and `:android:ui-core` tests passed. No `origin` remote exists, so nothing was pushed (commits only).
 
 ## 2026-11-23 11:45 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: Android foreground service, pairing UI, bot list, permissions and notifications (`android/`),

@@ -3,6 +3,87 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 11:44 — ds1 — deepseek/deepseek-flash (DeepSeek V4.1 Flash) — task: Shizuku integration (`android/` only)
+
+**Branch** `pb/android-shizuku`. **Done** (JVM-testable layer, app wiring, docs):
+
+- **Full level now needs control.** `Command.INSTALL_APK/SHELL/FILES/SETTINGS/RELAY_MOVE` have
+  `needsControl = true`, matching `core/.../Commands.kt` (`needsControl = level >= CONTROL`) and the
+  task statement. The executor's control check runs before the handler, so a Full bot that is not the
+  controller gets `not_controller`, never a shell command.
+- **`android/executor-core` (plain Kotlin, tested on the JVM):**
+  - `ShizukuState`: `ready` / `not_running` / `not_installed` / `no_permission` / `unsupported`, each
+    with the user-facing hint. `not_running` says Shizuku must be **restarted after every reboot**.
+  - `ShizukuShell` seam (`exec(script, timeoutMs, stdin)`), `ShellResult` (exit, raw stdout bytes,
+    stderr, `timedOut`, `launchFailed`) and `ShellRunner` (8 MiB stdout / 256 KiB stderr caps, stdin
+    on its own thread, SIGTERM then kill at the deadline).
+  - `ShellQuote`: single-quote escaping plus validation of paths (absolute, single line), settings
+    keys (`[A-Za-z0-9_.:-]+`), settings values, shell commands and APK split names.
+  - `ShellFiles`: `files list` (stat, 2000-entry cap with `truncated`), `read` (`head -c` cap,
+    4 MiB), `write` (raw bytes on stdin via `cat >`), `delete` (`rm -rf`); shell errors become
+    `internal`.
+  - `ShellApkInstaller`: PackageInstaller session driven through `pm install-create -r -S` →
+    `pm install-write -S <session> base.apk` (APK on stdin) → `pm install-commit`; abandons the
+    session on failure. The package name comes from the APK manifest (inspector seam) **before** the
+    install, so `{package}` is always known.
+  - `HttpsApkDownloader`: HTTPS only, redirects only to HTTPS, 256 MiB cap. `B64` decodes base64url
+    or standard with/without padding and encodes base64url without padding (PROTOCOL.md §1).
+  - `ShizukuFullCommandHandler`: validates args first (`bad_args` never reaches the device), maps
+    `shizuku_unavailable` / `timeout` / `internal`, and implements:
+    `install_apk {url|data_b64+name}`, `shell {command,timeout_ms}` → `{exit,stdout,stderr}`,
+    `settings {namespace,key,value?}` → `{value}` (`null` for unset), `files {op,path,data_b64?}`
+    → `{op,entries}` / `{op,data_b64,bytes}` / `{op,ok,bytes}` / `{op,ok}`. `relay_move` still
+    answers `internal` (relay lane owns it) and never touches Shizuku.
+  - **131 JVM tests** (was 74): handler validation/routing, shell timeout, settings get/put and
+    injection rejection, files parse/read/write/delete/caps, install session flow and every failure
+    branch, quoting, base64, `ShellRunner` (fake `Process`), executor integration (level, control,
+    Shizuku outage).
+- **`android/app`:**
+  - `ShizukuBridge` (singleton `ShizukuShell`): live state from `pingBinder` / `isPreV11` /
+    `checkSelfPermission`; binder received/dead and permission-result listeners; `newProcess` shell
+    through `ShellRunner`; `openShizukuOrDownload`.
+  - `ShizukuPermissionActivity` + `activity_shizuku.xml`: says exactly what is wrong (not installed /
+    not running / not allowed / too old), offers "Allow Shizuku access", "Open Shizuku to start it",
+    or the download page, and refreshes when the binder comes or goes.
+  - `MainActivity`: Shizuku state line + button. `AndroidDeviceControl`: `status.shizuku` is now true
+    only when the helper is ready. `BridgeRuntime` registers
+    `ShizukuFullCommandHandler(shell = ShizukuBridge, installer = ShellApkInstaller(...))`.
+  - Manifest: `ShizukuProvider` (authorities `${applicationId}.shizuku`, permission
+    `INTERACT_ACROSS_USERS_FULL`), `moe.shizuku.manager.permission.API_V23`,
+    `<queries><package moe.shizuku.privileged.api/></queries>`, the permission activity.
+  - Gradle: `dev.rikka.shizuku:api:13.1.5` + `:provider:13.1.5` (Apache-2.0, verified on Maven
+    Central) and `repositories { google(); mavenCentral() }` in the app module (it previously had no
+    repositories block because it only used a project dependency). ProGuard keeps `rikka.shizuku.**`.
+- **Docs:** `docs/THIRD_PARTY.md` records Shizuku 13.1.5 and why `newProcess` (deprecated upstream in
+  13.1.1 in favour of UserService, still present) is used; the file's long-standing unresolved merge
+  conflict markers were resolved while adding the entry. `android/README.md` documents the new
+  command paths and the Shizuku design.
+
+**Protocol notes (no wire changes):** `files.mtime` is **epoch milliseconds** (core's `FileEntry.mtime`
+is a plain Long); `files list` adds an optional `truncated:true` when the 2000-entry cap is hit;
+`install_apk` and `files` results follow `core/model/Commands.kt` exactly. Nothing to renumber.
+
+**How to test**
+```
+gradlew.bat :android:executor-core:test      # 131 tests, no Android SDK needed
+gradlew.bat test                            # repo-wide (core 111, relay 44, executor-core 131)
+gradlew.bat :android:app:assembleDebug      # needs an Android SDK + accepted licences (pending)
+```
+
+**Left**
+- **APK build pending the Android SDK** (none installed on this PC; do not install one on the user's
+  behalf). Expect the usual first-build fixes in the app module once an SDK exists: AGP 9 DSL details,
+  any lint NewApi hits, and confirmation that AGP's built-in Kotlin compiles the Shizuku calls.
+- Nothing runs on a real phone yet: the transport/relay lane must call `BridgeRuntime.handle` off the
+  main thread (shell commands block their caller) and emit `status.shizuku` from `DeviceStatus`.
+- `relay_move` is still `internal` for the relay lane.
+- A follow-up could move from `Shizuku.newProcess` to a Shizuku `UserService` if upstream removes it.
+- `files` has no append/resume; a read above 4 MiB and a write above the transport cap need a
+  follow-up chunked-files protocol if anyone needs them.
+
+**Blockers:** none. No `origin` remote exists, so nothing was pushed (commits only).
+
+
 
 ## 2026-11-23 11:30 -0600 - iceman (Iceman Contributor Free) - JSON Schemas, conformance tests, mock device
 - **Done:** Added `protocol/schema/*.schema.json` (draft 2020-12) for envelope, pairing-offer, pair-request, pair-result, request, response, event, and every command args/result in `docs/PROTOCOL.md`. Added `protocol/examples/` with one valid and at least one invalid example per message. Added `tests/conformance` (Node + vitest + ajv + ajv-formats) validating all examples; includes `src/protocol-samples.test.js` that auto-discovers captured JSON samples from `build/protocol-samples/*.json` (also `core|mcp|relay/build/protocol-samples/*.json`) and validates them when present. Added `tests/mock-device` (Node, `ws`) that connects to a relay as a device, completes hello auth (X25519 + HelloProof HMAC-SHA256), answers every command with realistic fake data (generated PNG screenshot, fake home-screen ui_tree, tap/type/key logging), honours permission levels and FIFO control queue with 120s idle auto-release. Added `docs/TESTING.md`.

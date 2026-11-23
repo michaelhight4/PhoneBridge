@@ -16,4 +16,24 @@
     <string name="main_test_result_placeholder">Press the test button to check what a bot would see.</string>
     <string name="main_test_result_disabled">Device control is off, so there is nothing to read. Turn on the accessibility service first.</string>
     <string name="main_footer">Only bots you pair can send commands. One bot is in control at a time, and you can stop everything from the notification.</string>
+
+    <string name="main_shizuku_on">Shizuku helper: ready</string>
+    <string name="main_shizuku_off">Shizuku helper: not ready</string>
+    <string name="main_open_shizuku">Shizuku access</string>
+
+    <string name="shizuku_title">Shizuku access</string>
+    <string name="shizuku_subtitle">Install APKs, change system settings, run shell commands and read or write files at Full level. These commands need Shizuku, a free open-source app that runs a privileged helper on your phone. Rooted and unrooted phones both work.</string>
+    <string name="shizuku_state_ready">Shizuku: ready</string>
+    <string name="shizuku_state_not_installed">Shizuku: not installed</string>
+    <string name="shizuku_state_not_running">Shizuku: not running</string>
+    <string name="shizuku_state_no_permission">Shizuku: access not allowed</string>
+    <string name="shizuku_state_unsupported">Shizuku: version too old</string>
+    <string name="shizuku_action_ready">Shizuku is working</string>
+    <string name="shizuku_action_allow">Allow Shizuku access</string>
+    <string name="shizuku_action_install">Get Shizuku</string>
+    <string name="shizuku_action_open">Open Shizuku to start it</string>
+    <string name="shizuku_open_app">Open Shizuku / download page</string>
+    <string name="shizuku_already_ready">Shizuku is already running and PhoneBridge is allowed.</string>
+    <string name="shizuku_reboot_hint">Shizuku has to be started again after every reboot. Open the Shizuku app and start it, then come back here.</string>
+    <string name="shizuku_footer">Only bots you pair with the Full level can use these commands, and one bot drives at a time. You can revoke the permission in Shizuku at any point.</string>
 </resources>

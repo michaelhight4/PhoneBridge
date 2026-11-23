@@ -6,6 +6,13 @@ plugins {
     id("com.android.application")
 }
 
+// Needed for the Shizuku AARs. The plain-JVM modules declare their own repositories; this module
+// previously only consumed a project dependency.
+repositories {
+    google()
+    mavenCentral()
+}
+
 android {
     namespace = "dev.phonebridge.app"
     compileSdk = 36
@@ -37,4 +44,10 @@ android {
 dependencies {
     // Pure Kotlin/JVM: request dispatch, permission checks, UI-tree ids, control arbitration.
     implementation(project(":android:executor-core"))
+
+    // Shizuku (Apache-2.0): the privileged helper API and its binder provider. Only the Full-level
+    // commands need it; without Shizuku installed or running those commands answer
+    // shizuku_unavailable and everything else keeps working.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

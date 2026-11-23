@@ -37,31 +37,22 @@ unchanged on the JVM and on Android.
 | Kotlin standard library (`org.jetbrains.kotlin:kotlin-stdlib`) | Apache-2.0 | Language runtime; pulled in by the Kotlin/Android Gradle plugins. |
 | `kotlin("test")` (kotlin-test + JUnit 5 platform) | Apache-2.0 | JVM unit tests in `android/executor-core`. Test scope only. |
 | Android Gradle plugin `com.android.application` 9.0.1 | Apache-2.0 | Build only, resolved from `google()` in `settings.gradle.kts` `pluginManagement`. Not shipped in the APK. |
-| Android platform APIs (`android.*`, `AndroidX`-free) | Apache-2.0 | Used directly through the SDK; no third-party Android libraries are bundled yet. |
+| Android platform APIs (`android.*`, `AndroidX`-free) | Apache-2.0 | Used directly through the SDK; no third-party Android libraries are bundled other than Shizuku below. |
+| [Shizuku API](https://github.com/RikkaApps/Shizuku-API) (`dev.rikka.shizuku:api` + `:provider`) 13.1.5 | Apache-2.0 | The Full-level privileged path: the `ShizukuProvider` binder, the permission request and `Shizuku.newProcess` for one-shot `sh -c` commands (`pm`, `settings`, file commands and shell). Shizuku (the user-installed app) owns the privileged side; PhoneBridge ships only the client API. Root and ADB/Sui backends are both supported by Shizuku itself. |
 | `:core` (this repo) | MIT | Shared protocol/crypto/pairing library; consumed as a Gradle project dependency. |
 
-Nothing was copied in from another project for the Android work; the accessibility tree mapping,
-gesture dispatch, command routing, permission checks and control queue are written here. The app
-deliberately has no AndroidX/Compose dependency yet (plain platform `Activity` + views), so there is
-nothing else to license-track.
+`Shizuku.newProcess` is deprecated upstream in Shizuku 13.1.1 in favour of a `UserService` (an AIDL
+service running under the privileged identity). It is still present and supported in 13.1.5, and it
+is the smallest way to run one-shot commands: no second process, no AIDL interface to version.
+Migrating to `UserService` is a self-contained follow-up if upstream removes `newProcess`.
+
+Nothing else was copied in from another project for the Android work; the accessibility tree
+mapping, gesture dispatch, Shizuku command building/quoting, permission checks and control queue are
+written here. The app deliberately has no AndroidX/Compose dependency yet (plain platform `Activity`
++ views), so there is nothing else to license-track.
 
 ## Relay (`relay/`)
 
-<<<<<<< HEAD
-`relay/` is owned by another lane; its dependencies should be listed there (currently Kotlin stdlib and
-`kotlin("test")` only).
-
-## Test-only dependencies
-
-| Library | Version | Licence |
-| --- | --- | --- |
-| `kotlin-test` / JUnit 5 | bundled with Kotlin 2.3.0 | Apache-2.0 / EPL-2.0 (test scope only) |
-
-## Assets
-
-None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
-source and author before they are committed.
-=======
 | What | Licence | How it is used |
 | --- | --- | --- |
 | Kotlin standard library, `kotlin("test")` + JUnit 5 | Apache-2.0 / EPL-2.0 | Runtime and test-only, as above. |
@@ -103,4 +94,14 @@ pairing task owns this section.
 ## MCP server (`mcp/`)
 
 Node/TypeScript dependencies are recorded here when that module lands.
->>>>>>> main
+
+## Test-only dependencies
+
+| Library | Version | Licence |
+| --- | --- | --- |
+| `kotlin-test` / JUnit 5 | bundled with Kotlin 2.3.0 | Apache-2.0 / EPL-2.0 (test scope only) |
+
+## Assets
+
+None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
+source and author before they are committed.

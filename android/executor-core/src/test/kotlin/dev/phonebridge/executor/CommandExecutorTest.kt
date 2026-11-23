@@ -94,17 +94,17 @@ class CommandExecutorTest {
         assertTrue(response.ok, "ui_tree failed: ${response.error}")
 
         val root = requireNotNull(response.result!!["root"] as? Map<*, *>)
-        assertEquals("n0", root["id"])
+        assertEquals("0", root["id"])
         assertEquals("android.widget.FrameLayout", root["cls"])
         assertEquals(listOf(0, 0, 1080, 2400), root["bounds"])
 
         val children = requireNotNull(root["children"] as? List<*>)
         assertEquals(4, children.size)
         val edit = requireNotNull(children[0] as? Map<*, *>)
-        assertEquals("n1", edit["id"])
+        assertEquals("0.0", edit["id"])
         assertEquals(true, edit["editable"])
         val button = requireNotNull(children[1] as? Map<*, *>)
-        assertEquals("n2", button["id"])
+        assertEquals("0.1", button["id"])
         assertEquals("OK", button["text"])
         assertEquals("Confirm", button["desc"])
         assertEquals("com.example:id/ok", button["res_id"])
@@ -113,7 +113,7 @@ class CommandExecutorTest {
         // Nested node keeps its pre-order id.
         val nested = requireNotNull(children[3] as? Map<*, *>)
         val list = requireNotNull((nested["children"] as? List<*>)?.first() as? Map<*, *>)
-        assertEquals("n5", list["id"])
+        assertEquals("0.3.0", list["id"])
 
         // Ids are repeatable for the same screen.
         val second = run(Fixtures.viewBot(), "ui_tree")
@@ -166,7 +166,7 @@ class CommandExecutorTest {
     fun `tap by node id taps the node centre`() {
         run(Fixtures.viewBot(), "ui_tree")
         takeControl()
-        val response = run(cmd = "tap", args = arrayOf("node_id" to "n2"))
+        val response = run(cmd = "tap", args = arrayOf("node_id" to "0.1"))
         assertTrue(response.ok, "${response.error}")
         assertEquals(listOf(300 to 450), device.taps) // (100,400,500,500) centre
     }
@@ -175,7 +175,7 @@ class CommandExecutorTest {
     fun `tap with an unknown node id is bad_args`() {
         run(Fixtures.viewBot(), "ui_tree")
         takeControl()
-        val response = run(cmd = "tap", args = arrayOf("node_id" to "n99"))
+        val response = run(cmd = "tap", args = arrayOf("node_id" to "9.9"))
         assertFalse(response.ok)
         assertEquals(ErrorCode.BAD_ARGS, response.error?.code)
         assertTrue(device.taps.isEmpty())
@@ -239,10 +239,10 @@ class CommandExecutorTest {
         run(Fixtures.viewBot(), "ui_tree")
         takeControl()
         assertTrue(run(cmd = "type", args = arrayOf("text" to "hello")).ok)
-        assertTrue(run(cmd = "type", args = arrayOf("text" to "hi", "node_id" to "n1")).ok)
+        assertTrue(run(cmd = "type", args = arrayOf("text" to "hi", "node_id" to "0.0")).ok)
         assertTrue(run(cmd = "type", args = arrayOf("text" to "")).ok) // clearing a field
         assertEquals(
-            listOf("hello" to null, "hi" to "n1", "" to null),
+            listOf("hello" to null, "hi" to "0.0", "" to null),
             device.texts,
         )
     }

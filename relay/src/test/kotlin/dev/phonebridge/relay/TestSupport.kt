@@ -127,7 +127,8 @@ class RawPeer(
             uri = uri,
             sslContext = context,
             timeoutMs = 5000,
-            maxMessageBytes = maxMessageBytes
+            maxMessageBytes = maxMessageBytes,
+            verifyHostname = tlsPin == null
         )
         connection.setReadTimeout(5000)
         if (readChallenge) {

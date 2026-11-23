@@ -107,6 +107,56 @@ class RelayTlsTest {
     }
 
     @Test
+    fun `hostname verification is enforced unless the certificate is pinned`() {
+        val dir = tempDir()
+        val relay = TestSupport.testRelay(tls = TlsConfig.selfSigned(dir), dataDir = dir)
+        try {
+            val material = dev.phonebridge.relay.crypto.Tls.fromKeyStore(
+                java.io.File(dir, dev.phonebridge.relay.crypto.Tls.DEFAULT_KEYSTORE_FILE),
+                dev.phonebridge.relay.crypto.Tls.DEFAULT_PASSWORD
+            )
+            val trusting = trustOnly(material.certificate)
+
+            // A CA-style client (no pin) must check that the certificate matches the host name. The
+            // generated certificate has no SAN, so connecting to 127.0.0.1 by name must fail.
+            val mismatch = runCatching {
+                dev.phonebridge.relay.ws.WebSocketClient.connect(
+                    uri = java.net.URI(relay.url),
+                    sslContext = trusting,
+                    timeoutMs = 5000,
+                    maxMessageBytes = 64 * 1024,
+                    verifyHostname = true
+                )
+            }.exceptionOrNull()
+            assertTrue(mismatch is java.io.IOException, "expected a host name verification failure, got $mismatch")
+
+            // With verification off (pinned or development mode) the same certificate is accepted.
+            dev.phonebridge.relay.ws.WebSocketClient.connect(
+                uri = java.net.URI(relay.url),
+                sslContext = trusting,
+                timeoutMs = 5000,
+                maxMessageBytes = 64 * 1024,
+                verifyHostname = false
+            ).closeQuietly(1000, "test done")
+        } finally {
+            relay.stop()
+        }
+    }
+
+    private fun trustOnly(certificate: java.security.cert.X509Certificate): javax.net.ssl.SSLContext {
+        val store = java.security.KeyStore.getInstance("PKCS12")
+        store.load(null, null)
+        store.setCertificateEntry("relay", certificate)
+        val factory = javax.net.ssl.TrustManagerFactory.getInstance(
+            javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm()
+        )
+        factory.init(store)
+        return javax.net.ssl.SSLContext.getInstance("TLS").apply {
+            init(null, factory.trustManagers, java.security.SecureRandom())
+        }
+    }
+
+    @Test
     fun `plain ws on a public interface needs an explicit opt in`() {
         val failure = runCatching {
             RelayConfig(bindAddress = "0.0.0.0", tls = null).validated()

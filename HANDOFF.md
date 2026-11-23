@@ -5,15 +5,17 @@ what is left, how to build/test, blockers.
 
 ## 2026-11-23 11:14–11:35 — ds2 / deepseek/deepseek-flash — task 02 relay server (`:relay`)
 
-**Done (acceptance criteria met, `:relay:test` green: 44 tests)**
+**Done (acceptance criteria met, `:relay:test` green: 45 tests)**
 - Embeddable relay API in `dev.phonebridge.relay`: `Relay.start(RelayConfig): RelayHandle`, `stop()`,
   `moveTo(newUrl)`, `stats()`, `peers()`; per-connection `RelayClient` for devices, bots and tests.
 - Transport: hand-written RFC 6455 server + client (text frames, ping/pong, close, masking), so the
   relay has no heavy dependency and runs on Android API 26+ (see `docs/THIRD_PARTY.md` for why a
   library was not used and what Gson is used for).
 - TLS: PKCS#12 keystore or a self-signed P-256 certificate generated on first run and persisted
-  (`relay-cert.p12`), fingerprint exposed as base64url + hex for pinning, clients pin the fingerprint;
-  `--insecure-dev` / `insecureDev` allows plain `ws://` off loopback; loopback `ws://` is allowed.
+  (`relay-cert.p12`), fingerprint exposed as base64url + hex for pinning (`relay_pin` in a pairing
+  offer, documented in `relay/PROTOCOL-RELAY.md`), clients pin the fingerprint; a client without a pin
+  verifies the chain **and** the host name; `--insecure-dev` / `insecureDev` allows plain `ws://` off
+  loopback; loopback `ws://` is allowed.
 - Peer auth: relay `challenge` (nonce + per-connection X25519 ephemeral key) and `hello` with an
   `dh-hmac-sha256` proof of key ownership; `peer_id` must match the public key; replayed nonce, forged
   proof, all-zero key and spoofed `from` are all rejected.
@@ -57,7 +59,7 @@ what is left, how to build/test, blockers.
 
 **How to test**
 ```bash
-gradlew.bat :relay:test                                        # 44 in-process tests
+gradlew.bat :relay:test                                        # 45 in-process tests
 gradlew.bat :relay:run --args="--port 8443"                    # standalone, wss + self-signed cert
 gradlew.bat :relay:shadowJar                                   # single-file jar for a VPS
 java -jar relay/build/libs/phonebridge-relay-all.jar --help

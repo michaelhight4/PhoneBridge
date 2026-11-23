@@ -4,7 +4,26 @@
 module implements. Everything here is **additive**: envelopes, identities, `hello`, `route`,
 `relay_moved` fields, pairing offers and the 16 MiB / rate-limit rules all come from the base protocol
 unchanged. The additions are the `challenge` message (the nonce a peer proves against), the `hello_ok`
-confirmation, the two explicit short-code mailbox messages and the error codes the relay can return.
+confirmation, the two explicit short-code mailbox messages, the `relay_pin` field of a pairing offer and
+the error codes the relay can return.
+
+## 0. Pinning the relay in a pairing offer
+
+A relay that terminates TLS with a self-signed certificate exposes the base64url SHA-256 of its DER
+certificate (`RelayHandle.fingerprint`, printed by the standalone jar as `cert pin`). Add it to the
+pairing offer next to the relay URL:
+
+```json
+{ "v": 1, "relay": "wss://192.168.1.20:8443",
+  "relay_pin": "<base64url SHA-256 of the relay certificate>",
+  "device_id": "<peer_id>", "device_pub": "<b64>", "secret": "<b64 32 bytes>",
+  "code": "7K4-Q9M", "exp": 1790000000 }
+```
+
+The bot passes `relay_pin` as `RelayClientConfig.tlsPin`, so the WebSocket handshake only succeeds
+against that exact certificate. A relay behind a normal CA certificate omits `relay_pin` and the client
+uses the system trust store. This field is optional and additive; `docs/PROTOCOL.md` keeps owning the
+offer definition.
 
 ## 1. Connection and authentication
 

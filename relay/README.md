@@ -47,7 +47,9 @@ peer identities are exposed).
 
 Use your own certificate instead of the generated one with
 `--keystore relay.p12 --keystore-password ...` (or the `PHONEBRIDGE_KEYSTORE_PASSWORD` environment
-variable; secrets are never printed).
+variable; secrets are never printed). With a CA-issued certificate the client verifies both the chain
+and the host name; with `relay_pin` it verifies the certificate fingerprint instead (the generated
+certificate has no subject alternative name, which is why it is pinned rather than host-name checked).
 
 ## Embedding
 
@@ -102,7 +104,7 @@ val client = RelayClient(
         url = "wss://192.168.1.20:8443",
         identity = myKeyPair,             // long-term X25519 key
         role = "bot",
-        tlsPin = offer.relayPin,          // self-signed relay: pin the fingerprint
+        tlsPin = offer.pin,               // the offer's "relay_pin" value: pin the fingerprint
     )
 )
 

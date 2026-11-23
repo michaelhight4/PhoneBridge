@@ -317,6 +317,7 @@ class RelayClient(private val config: RelayClientConfig) {
             timeoutMs = config.handshakeTimeoutMs,
             maxMessageBytes = config.maxEnvelopeBytes,
             idleTimeoutMs = config.idleTimeoutMs,
+            verifyHostname = config.tlsPin == null && !config.insecureTls,
             log = config.log
         )
 

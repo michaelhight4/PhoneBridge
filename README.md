@@ -7,7 +7,7 @@ Let **your own** AI bot see and control **your own** Android phone (v1) and, lat
   ChatGPT-style bots with tools, Home Assistant, a plain script) can drive it.
 - **No central server, no master key:** the relay ("the heart") runs on a device *you* pick:
   your PC, your phone, or an optional tiny VPS relay. Turn that host off and remote access stops.
-- **You stay in charge:** every bot is paired explicitly (QR, short code like `7K4-Q9M`, or a
+- **You stay in charge:** every bot is paired explicitly (QR, short code like `7K4-Q9B`, or a
   `phonebridge://pair?...` link/file), gets its own key and permission level (View / Control / Full),
   shows up in a Bluetooth-style list, and a persistent notification always names the bot in control.
   One tap kicks everyone.

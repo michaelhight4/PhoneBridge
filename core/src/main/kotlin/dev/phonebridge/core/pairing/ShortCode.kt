@@ -4,7 +4,7 @@ import dev.phonebridge.core.crypto.Primitives
 import java.security.SecureRandom
 
 /**
- * The short pairing code, e.g. `7K4-Q9M`.
+ * The short pairing code, e.g. `7K4-Q9B`.
  *
  * Six Crockford base32 symbols: five data symbols (25 bits) plus one check symbol. Crockford's
  * ambiguity fixes are applied on input (`O`→`0`, `I`→`1`, `L`→`1`, case folded, `-` and spaces
@@ -23,7 +23,7 @@ object ShortCode {
     private const val CRC_POLY = 0x05
     private const val CRC_MASK = 0x1F
 
-    /** Random code in display form, e.g. `7K4-Q9M`. */
+    /** Random code in display form, e.g. `7K4-Q9B`. */
     fun generate(random: SecureRandom = Primitives.defaultRandom()): String = format(generateBare(random))
 
     /** Random code without the display dash, e.g. `7K4Q9M`. */
@@ -54,7 +54,7 @@ object ShortCode {
         return out.toString()
     }
 
-    /** Display form with the dash after three symbols: `7K4-Q9M`. */
+    /** Display form with the dash after three symbols: `7K4-Q9B`. */
     fun format(input: String): String {
         val normalised = normalise(input)
         if (normalised.length != SYMBOLS) return normalised

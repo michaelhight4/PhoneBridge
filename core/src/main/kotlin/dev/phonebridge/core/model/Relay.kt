@@ -35,7 +35,15 @@ object RelayType {
     const val ERROR = "error"
     const val RELAY_MOVED = "relay_moved"
 
-    val ALL: Set<String> = setOf(HELLO, ROUTE, PING, PONG, ERROR, RELAY_MOVED)
+    /** Bot -> relay: "what offer is behind this short code?". */
+    const val PAIR_LOOKUP = "pair_lookup"
+
+    /** Relay -> bot: the offer JSON, base64url in `payload`. */
+    const val PAIR_OFFER = "pair_offer"
+
+    val ALL: Set<String> = setOf(
+        HELLO, ROUTE, PING, PONG, ERROR, RELAY_MOVED, PAIR_LOOKUP, PAIR_OFFER,
+    )
 }
 
 /**
@@ -70,8 +78,13 @@ data class RelayEnvelope(
     val token: String? = null,
     val expires: Long? = null,
 ) {
-    init {
-        if (type !in RelayType.ALL) throw ProtocolException("unknown envelope type: $type")
+    /** True for a type this protocol version understands; unknown types must be ignored, not fatal. */
+    val isKnownType: Boolean
+        get() = type in RelayType.ALL
+
+    /** Throws when the envelope uses a type this version cannot handle. */
+    fun requireKnownType() {
+        if (!isKnownType) throw ProtocolException("unknown envelope type: $type")
     }
 
     fun payloadBytes(): ByteArray =
@@ -124,6 +137,14 @@ data class RelayEnvelope(
 
         fun relayMoved(newUrl: String, token: String? = null, expires: Long? = null): RelayEnvelope =
             RelayEnvelope(type = RelayType.RELAY_MOVED, newUrl = newUrl, token = token, expires = expires)
+
+        /** Bot -> relay: ask for the offer behind a short code (`7K4-Q9B`). */
+        fun pairLookup(from: String, code: String, id: String = newId()): RelayEnvelope =
+            RelayEnvelope(type = RelayType.PAIR_LOOKUP, from = from, code = code, id = id)
+
+        /** Relay -> bot: the offer JSON (bytes of the same JSON a `.pbpair` file holds). */
+        fun pairOffer(offerJson: ByteArray, id: String? = null): RelayEnvelope =
+            RelayEnvelope(type = RelayType.PAIR_OFFER, id = id, payload = B64Url.encode(offerJson))
     }
 }
 

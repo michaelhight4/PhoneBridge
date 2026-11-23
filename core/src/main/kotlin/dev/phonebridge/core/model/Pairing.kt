@@ -38,7 +38,7 @@ data class PairingOffer(
     val devicePub: String,
     /** 32 random bytes, base64url, single use, burned after the first accepted request. */
     val secret: String,
-    /** Display form `7K4-Q9M`; the last symbol is a check symbol. */
+    /** Display form `7K4-Q9B`; the last symbol is a check symbol. */
     val code: String,
     /** Unix seconds; creation + 10 minutes. */
     val exp: Long,

@@ -36,6 +36,8 @@ class ProtocolSerializationTest {
             RelayEnvelope.pong(deviceId, "id-1"),
             RelayEnvelope.error("peer_offline", "bot is not connected", pos = 2),
             RelayEnvelope.relayMoved("wss://new.example:8443", "token-1", 1_700_000_000L),
+            RelayEnvelope.pairLookup(botId, "7K4-Q9B"),
+            RelayEnvelope.pairOffer("""{"v":1}""".toByteArray()),
         )
         for (envelope in envelopes) {
             val decoded = roundTrip(RelayEnvelope.serializer(), envelope)
@@ -81,8 +83,11 @@ class ProtocolSerializationTest {
     }
 
     @Test
-    fun unknownEnvelopeTypesAndMissingPayloadsAreRejected() {
-        assertFailsWith<ProtocolException> { RelayEnvelope(type = "bogus") }
+    fun unknownEnvelopeTypesDecodeButAreMarkedUnknown() {
+        val envelope = RelayEnvelope(type = "some_future_type", from = deviceId)
+        assertFalse(envelope.isKnownType)
+        assertFailsWith<ProtocolException> { envelope.requireKnownType() }
+        assertTrue(RelayEnvelope(type = RelayType.ROUTE).isKnownType)
         assertFailsWith<ProtocolException> { RelayEnvelope(type = RelayType.ROUTE).payloadBytes() }
         assertFailsWith<ProtocolException> { EnvelopeCodec.decode("not json") }
     }

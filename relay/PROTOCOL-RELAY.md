@@ -32,6 +32,10 @@ The relay sends this immediately after the upgrade. An unauthenticated connectio
 else receives `error {code:"unauthorized"}` and is closed. Connections must authenticate within
 `helloTimeoutMs` (default 30 s).
 
+A peer that sends `hello` before it reads the challenge (the literal reading of "the relay challenges
+with a nonce in the `hello` reply") is not disconnected: the relay answers with the challenge again,
+up to three times, and the peer then sends `hello` with that nonce.
+
 ### hello (peer -> relay)
 
 ```json

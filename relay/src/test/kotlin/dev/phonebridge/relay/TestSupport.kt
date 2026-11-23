@@ -116,7 +116,7 @@ class RawPeer(
 
     private lateinit var challenge: JsonObject
 
-    fun open(): RawPeer {
+    fun open(readChallenge: Boolean = true): RawPeer {
         val uri = URI(url)
         val context = if (uri.scheme.equals("wss", ignoreCase = true)) {
             Tls.clientContext(tlsPin, false)
@@ -130,8 +130,15 @@ class RawPeer(
             maxMessageBytes = maxMessageBytes
         )
         connection.setReadTimeout(5000)
-        challenge = readJson() ?: throw IllegalStateException("relay sent no challenge")
+        if (readChallenge) {
+            challenge = readJson() ?: throw IllegalStateException("relay sent no challenge")
+        }
         return this
+    }
+
+    /** Uses a challenge that was read out of band, e.g. after sending hello before reading it. */
+    fun adoptChallenge(obj: JsonObject) {
+        challenge = obj
     }
 
     fun challengeRelayId(): String = Json.string(challenge, "relay_id") ?: ""

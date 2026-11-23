@@ -10,6 +10,7 @@ import dev.phonebridge.executor.ShizukuShell
 import dev.phonebridge.executor.ShizukuState
 import dev.phonebridge.executor.ShellResult
 import dev.phonebridge.executor.ShellRunner
+import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
@@ -135,19 +136,20 @@ object ShizukuBridge : ShizukuShell {
     /**
      * Runs `sh -c script` as the shell user through Shizuku and bounds it with [ShellRunner].
      *
-     * `Shizuku.newProcess` is deprecated upstream in favour of UserService, but it is still present
-     * in 13.1.5 and is the smallest way to run one-shot `pm`, `settings` and file commands without a
-     * second process and an AIDL interface. ShellRunner owns the timeout, stdin and output caps.
+     * Shizuku 13.1.5 no longer exposes `Shizuku.newProcess`, but its service AIDL still provides
+     * `newProcess`; [ShizukuProcess] adapts the returned `IRemoteProcess` to [Process], so the
+     * timeout, stdin and output caps stay in the tested plain-Kotlin runner.
      */
-    @Suppress("DEPRECATION")
     override fun exec(script: String, timeoutMs: Long, stdin: ByteArray?): ShellResult {
         if (computeState() != ShizukuState.READY) {
             return ShellResult.failure(state.message)
         }
         return try {
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", script), null, null)
-                ?: return ShellResult.failure("Shizuku refused to start a shell process")
-            ShellRunner.run(process, timeoutMs, stdin)
+            val service = IShizukuService.Stub.asInterface(
+                Shizuku.getBinder() ?: throw IllegalStateException("Shizuku service binder is missing"),
+            )
+            val remote = service.newProcess(arrayOf("sh", "-c", script), null, null)
+            ShellRunner.run(ShizukuProcess(remote), timeoutMs, stdin)
         } catch (t: Throwable) {
             Log.w(TAG, "shell failed", t)
             ShellResult.failure("Shizuku is not available: ${t.message ?: t.javaClass.simpleName}")

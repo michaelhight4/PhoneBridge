@@ -38,13 +38,16 @@ unchanged on the JVM and on Android.
 | `kotlin("test")` (kotlin-test + JUnit 5 platform) | Apache-2.0 | JVM unit tests in `android/executor-core`. Test scope only. |
 | Android Gradle plugin `com.android.application` 9.0.1 | Apache-2.0 | Build only, resolved from `google()` in `settings.gradle.kts` `pluginManagement`. Not shipped in the APK. |
 | Android platform APIs (`android.*`, `AndroidX`-free) | Apache-2.0 | Used directly through the SDK; no third-party Android libraries are bundled other than Shizuku below. |
-| [Shizuku API](https://github.com/RikkaApps/Shizuku-API) (`dev.rikka.shizuku:api` + `:provider`) 13.1.5 | Apache-2.0 | The Full-level privileged path: the `ShizukuProvider` binder, the permission request and `Shizuku.newProcess` for one-shot `sh -c` commands (`pm`, `settings`, file commands and shell). Shizuku (the user-installed app) owns the privileged side; PhoneBridge ships only the client API. Root and ADB/Sui backends are both supported by Shizuku itself. |
+| [Shizuku API](https://github.com/RikkaApps/Shizuku-API) (`dev.rikka.shizuku:api` + `:provider` + `:aidl`) 13.1.5 | MIT (the AAR/POM metadata says MIT; some guides say Apache-2.0, the published licence is MIT) | The Full-level privileged path: the `ShizukuProvider` binder, the permission request, and a shell process started through the shipped `IShizukuService`/`IRemoteProcess` AIDL (`ShizukuProcess`). Shizuku (the user-installed app) owns the privileged side; PhoneBridge ships only the client API. Root and ADB/Sui backends are both supported by Shizuku itself. |
 | `:core` (this repo) | MIT | Shared protocol/crypto/pairing library; consumed as a Gradle project dependency. |
+| AndroidX `annotation` 1.3.0 | Apache-2.0 | Transitive runtime dependency of the Shizuku AARs (@NonNull/@Nullable annotations only). Not used directly by PhoneBridge code. |
 
-`Shizuku.newProcess` is deprecated upstream in Shizuku 13.1.1 in favour of a `UserService` (an AIDL
-service running under the privileged identity). It is still present and supported in 13.1.5, and it
-is the smallest way to run one-shot commands: no second process, no AIDL interface to version.
-Migrating to `UserService` is a self-contained follow-up if upstream removes `newProcess`.
+Shizuku 13.1.5 removed the `Shizuku.newProcess` convenience helper (deprecated upstream in favour of a
+`UserService`), but the service AIDL still implements `newProcess`. `android/app/.../ShizukuProcess.kt`
+is a minimal `Process` adapter over `IRemoteProcess` (file-descriptor streams plus the remote
+wait/exit/destroy calls) so the tested plain-Kotlin `ShellRunner` keeps owning timeouts, stdin and
+output caps. If a future Shizuku removes `newProcess` from the service, that one class is replaced by a
+UserService binding and nothing above the seam changes.
 
 Nothing else was copied in from another project for the Android work; the accessibility tree
 mapping, gesture dispatch, Shizuku command building/quoting, permission checks and control queue are

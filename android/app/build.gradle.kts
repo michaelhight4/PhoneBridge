@@ -45,9 +45,11 @@ dependencies {
     // Pure Kotlin/JVM: request dispatch, permission checks, UI-tree ids, control arbitration.
     implementation(project(":android:executor-core"))
 
-    // Shizuku (Apache-2.0): the privileged helper API and its binder provider. Only the Full-level
+    // Shizuku (MIT): the privileged helper API and its binder provider. Only the Full-level
     // commands need it; without Shizuku installed or running those commands answer
-    // shizuku_unavailable and everything else keeps working.
+    // shizuku_unavailable and everything else keeps working. `aidl` carries IShizukuService and
+    // IRemoteProcess, which the app uses to start a shell process (see ShizukuProcess).
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation("dev.rikka.shizuku:aidl:13.1.5")
 }

@@ -40,8 +40,8 @@ what is left, how to build/test, blockers.
     Shizuku outage).
 - **`android/app`:**
   - `ShizukuBridge` (singleton `ShizukuShell`): live state from `pingBinder` / `isPreV11` /
-    `checkSelfPermission`; binder received/dead and permission-result listeners; `newProcess` shell
-    through `ShellRunner`; `openShizukuOrDownload`.
+    `checkSelfPermission`; binder received/dead and permission-result listeners; shell through the
+    service AIDL + `ShizukuProcess` + `ShellRunner`; `openShizukuOrDownload`.
   - `ShizukuPermissionActivity` + `activity_shizuku.xml`: says exactly what is wrong (not installed /
     not running / not allowed / too old), offers "Allow Shizuku access", "Open Shizuku to start it",
     or the download page, and refreshes when the binder comes or goes.
@@ -51,13 +51,20 @@ what is left, how to build/test, blockers.
   - Manifest: `ShizukuProvider` (authorities `${applicationId}.shizuku`, permission
     `INTERACT_ACROSS_USERS_FULL`), `moe.shizuku.manager.permission.API_V23`,
     `<queries><package moe.shizuku.privileged.api/></queries>`, the permission activity.
-  - Gradle: `dev.rikka.shizuku:api:13.1.5` + `:provider:13.1.5` (Apache-2.0, verified on Maven
-    Central) and `repositories { google(); mavenCentral() }` in the app module (it previously had no
-    repositories block because it only used a project dependency). ProGuard keeps `rikka.shizuku.**`.
-- **Docs:** `docs/THIRD_PARTY.md` records Shizuku 13.1.5 and why `newProcess` (deprecated upstream in
-  13.1.1 in favour of UserService, still present) is used; the file's long-standing unresolved merge
-  conflict markers were resolved while adding the entry. `android/README.md` documents the new
-  command paths and the Shizuku design.
+  - Gradle: `dev.rikka.shizuku:api:13.1.5`, `:provider:13.1.5` and `:aidl:13.1.5` (the published
+    licence is **MIT**, not Apache-2.0 as some guides say; verified in the POMs) and
+    `repositories { google(); mavenCentral() }` in the app module (it previously had no repositories
+    block because it only used a project dependency). ProGuard keeps `rikka.shizuku.**` and
+    `moe.shizuku.**`.
+  - **Shizuku 13.1.5 removed `Shizuku.newProcess`**, so the shell is started through the still-shipped
+    service AIDL: `IShizukuService.Stub.asInterface(Shizuku.getBinder()).newProcess(...)`, adapted to
+    `java.lang.Process` by `ShizukuProcess` (ParcelFileDescriptor streams + remote wait/exit/destroy).
+    This is the same thin wrapper the removed helper used; `ShellRunner` on the app side still owns
+    the timeout and I/O caps. If a later Shizuku drops `newProcess` too, only `ShizukuProcess` and the
+    two lines in `ShizukuBridge.exec` change to a UserService binding.
+- **Docs:** `docs/THIRD_PARTY.md` records Shizuku 13.1.5 (MIT) and the AIDL adapter; the file's
+  long-standing unresolved merge conflict markers were resolved while adding the entry.
+  `android/README.md` documents the new command paths and the Shizuku design.
 
 **Protocol notes (no wire changes):** `files.mtime` is **epoch milliseconds** (core's `FileEntry.mtime`
 is a plain Long); `files list` adds an optional `truncated:true` when the 2000-entry cap is hit;
@@ -77,7 +84,9 @@ gradlew.bat :android:app:assembleDebug      # needs an Android SDK + accepted li
 - Nothing runs on a real phone yet: the transport/relay lane must call `BridgeRuntime.handle` off the
   main thread (shell commands block their caller) and emit `status.shizuku` from `DeviceStatus`.
 - `relay_move` is still `internal` for the relay lane.
-- A follow-up could move from `Shizuku.newProcess` to a Shizuku `UserService` if upstream removes it.
+- A follow-up should move from the service `newProcess` AIDL to a Shizuku `UserService` when upstream
+  removes `newProcess` from the service as well; the seam is `ShizukuProcess` + two lines in
+  `ShizukuBridge.exec`.
 - `files` has no append/resume; a read above 4 MiB and a write above the transport cap need a
   follow-up chunked-files protocol if anyone needs them.
 

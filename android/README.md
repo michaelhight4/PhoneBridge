@@ -32,7 +32,7 @@ commands. `android/executor-core` holds all the logic that can be tested without
 | Piece | What |
 | --- | --- |
 | `ShizukuState` | `ready` / `not_running` / `not_installed` / `no_permission` / `unsupported`, each with the user-facing hint the bot's `shizuku_unavailable` error carries. |
-| `ShizukuShell` | Seam: `exec("sh -c script", timeoutMs, stdin)` and the current state. The app implements it with `Shizuku.newProcess`; tests use `FakeShizukuShell`. |
+| `ShizukuShell` | Seam: `exec("sh -c script", timeoutMs, stdin)` and the current state. The app implements it with the Shizuku service AIDL plus `ShizukuProcess`; tests use `FakeShizukuShell`. |
 | `ShellRunner` | Reads stdout/stderr (8 MiB / 256 KiB caps), writes stdin, kills the process at the deadline, reports `timedOut`. |
 | `ShellQuote` | Single-quote escaping plus validation for paths, settings keys/values, shell commands and APK split names. |
 | `ShellFiles` | `files list/read/write/delete` as `stat` / `head -c` / `cat >` / `rm -rf`; `mtime` is epoch milliseconds and `list` caps at 2000 entries. |

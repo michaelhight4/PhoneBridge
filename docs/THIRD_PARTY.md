@@ -47,21 +47,6 @@ nothing else to license-track.
 
 ## Relay (`relay/`)
 
-<<<<<<< HEAD
-`relay/` is owned by another lane; its dependencies should be listed there (currently Kotlin stdlib and
-`kotlin("test")` only).
-
-## Test-only dependencies
-
-| Library | Version | Licence |
-| --- | --- | --- |
-| `kotlin-test` / JUnit 5 | bundled with Kotlin 2.3.0 | Apache-2.0 / EPL-2.0 (test scope only) |
-
-## Assets
-
-None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
-source and author before they are committed.
-=======
 | What | Licence | How it is used |
 | --- | --- | --- |
 | Kotlin standard library, `kotlin("test")` + JUnit 5 | Apache-2.0 / EPL-2.0 | Runtime and test-only, as above. |
@@ -95,12 +80,17 @@ The relay uses only APIs present on Android API 26+ (`java.util.Base64`, `javax.
 `java.security`, `java.util.concurrent`, `java.io`, `java.net`) and on JDK 17+, so the same classes run
 in the Android app, on the desktop and on a VPS. It ships no images, fonts or other binary assets.
 
-## Core (`core/`)
+## Test-only dependencies
 
-Kotlin standard library and `kotlin("test")` only at the time of writing; the protocol, crypto and
-pairing task owns this section.
+| Library | Version | Licence |
+| --- | --- | --- |
+| `kotlin-test` / JUnit 5 | bundled with Kotlin 2.3.0 | Apache-2.0 / EPL-2.0 (test scope only) |
+
+## Assets
+
+None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
+source and author before they are committed.
 
 ## MCP server (`mcp/`)
 
 Node/TypeScript dependencies are recorded here when that module lands.
->>>>>>> main

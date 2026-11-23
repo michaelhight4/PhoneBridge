@@ -28,7 +28,11 @@ fun interface FullCommandHandler {
 class CommandExecutor(
     private val device: DeviceControl,
     private val control: ControlArbiter = ControlArbiter(),
-    private val full: FullCommandHandler? = null,
+    /**
+     * Mutable so the Android service can plug in the Shizuku / relay implementations after the
+     * executor was created at app start. Null means those commands answer `shizuku_unavailable`.
+     */
+    var full: FullCommandHandler? = null,
 ) {
     private var snapshot: UiTreeSnapshot? = null
 

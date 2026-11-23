@@ -1,14 +1,49 @@
 # Android app (Kotlin, minSdk 26) — see docs/SPEC.md
 
-Two Gradle projects:
+Three Gradle projects:
 
 | Project | What | Builds without an Android SDK? |
 | --- | --- | --- |
 | `:android:executor-core` (`android/executor-core`) | Plain Kotlin/JVM: protocol `Request`/`Response`, permission levels, control arbitration, argument parsing, UI-tree node ids, `DeviceControl` seam, the Shizuku command layer (`ShizukuShell`, `ShellRunner`, `ShellQuote`, `ShellFiles`, `ShellApkInstaller`, `ShizukuFullCommandHandler`), settings deep-link constants. | Yes — `gradlew.bat :android:executor-core:test` |
-| `:android:app` (`android/app`) | The APK: `BridgeAccessibilityService`, `AndroidDeviceControl`, `BridgeRuntime`, `ShizukuBridge`, `ShizukuPermissionActivity`, settings deep link, first-run screen. | No — needs an SDK; included only when one is found |
+| `:android:ui-core` (`android/ui-core`) | Plain Kotlin/JVM: pairing countdown/expiry, approve/deny flow, paired-bot list state, activity log (with a JSON-file store), relay host choice, onboarding checklist, notification text, the Noise session/request routing seam, and `:core` wire ↔ executor conversion. | Yes — `gradlew.bat :android:ui-core:test` |
+| `:android:app` (`android/app`) | The APK: `BridgeService` (foreground, relay client + embedded relay), `BridgeAccessibilityService`, `AndroidDeviceControl`, `ShizukuBridge`/`ShizukuPermissionActivity`, pairing and approval screens, bot list, activity log, relay screen, onboarding. | No — needs an SDK; included only when one is found |
 
 `settings.gradle.kts` includes `:android:app` only when `ANDROID_HOME`, `ANDROID_SDK_ROOT` or
-`sdk.dir` in `local.properties` is present; `:android:executor-core` is always included.
+`sdk.dir` in `local.properties` is present; `:android:executor-core` and `:android:ui-core` are always
+included.
+
+## Screens
+
+| Screen | What it does |
+| --- | --- |
+| `MainActivity` | Start/stop the bridge, accessibility state, who is in control, doors to the other screens, and a "test screen read" diagnostic. |
+| `PairingActivity` | One live offer: QR (ZXing core, Apache-2.0), short code, Share link, Export `.pbpair` through the system share sheet, Regenerate, countdown to the 10-minute expiry. |
+| `ApprovalActivity` | Full-screen "Allow this bot?" from the high-priority notification: name, fingerprint, requested level, a picker that can only lower it, Allow/Deny. |
+| `BotListActivity` | Bluetooth-style list: name, fingerprint, last seen, connection/control state, on/off switch, level picker, unpair, "Kick everyone". |
+| `ActivityLogActivity` | Per-bot command log with time and result, filterable per bot, clear. Typed text and shell commands are never copied into the log. |
+| `RelayActivity` | Where the heart beats (this phone / my PC / custom URL, certificate pin) and "Move heart here" (`relay_move`). |
+| `OnboardingActivity` | Accessibility enabled, notifications permission, battery-optimisation exemption. |
+| `ShizukuPermissionActivity` | Says whether Shizuku is missing, stopped, not allowed or too old, and offers the matching fix (allow, open Shizuku, download page). |
+
+## Bridge service (this build)
+
+`BridgeService` is a foreground service (`connectedDevice|specialUse`) that:
+
+- loads this phone's X25519 identity (`identity.v1.json`, generated on first run), the paired-bot
+  registry (`bots.v1.json`, `:core` `JsonFileBotRegistry`) and the activity log (`activity.v1.json`),
+- starts the embedded relay when this phone is the chosen heart (`port = 0`, self-signed TLS,
+  advertised on the LAN IPv4 address),
+- keeps the outbound `:relay` `RelayClient` connected to the chosen relay over Wi-Fi or mobile data,
+  following `relay_moved` and reconnecting with the client's exponential backoff,
+- completes the Noise `XX` handshake as responder for each paired bot and pins the bot's public key,
+- hands decrypted `AppRequest`s to `BridgeRuntime.handle` (the accessibility executor) and sends the
+  sealed response back through the relay,
+- posts the persistent "who is in control" notification with **Stop** and **Kick everyone**, and a
+  high-priority full-screen "Allow this bot?" notification for pending pairings,
+- serves `relay_move` (`{to:"this"}` or a `wss://` URL) from the Full-level command handler.
+
+The relay and the app share `:core`'s envelope, identity and `HelloAuth` types, so there is no type
+conversion at the service boundary. The relay client's `payload` stays opaque base64url ciphertext.
 
 ## Device control (this build)
 
@@ -48,6 +83,10 @@ common one: every Full command answers `shizuku_unavailable` with that hint whil
 `data_b64` + `name`. APKs are streamed into a PackageInstaller session through `pm`; nothing is
 written to shared storage.
 
+`relay_move` stays with the foreground service's controller (`BridgeRuntime.setFullHandler`); every
+other Full-level command always goes to the Shizuku handler, so starting or stopping the bridge never
+disables them.
+
 Protocol notes for this build (additions only, nothing renamed): the `Node` object carries an extra
 `visible` boolean, `long_press` also accepts `node_id`, and `request_control` answered "queued" returns
 `{granted:false, position:<n>}` so the bot does not need the separate `queue_position` event to know
@@ -56,7 +95,8 @@ where it is.
 ## Build
 
 ```
-gradlew.bat :android:executor-core:test   # logic tests, no SDK needed
+gradlew.bat :android:executor-core:test   # executor + Shizuku logic, no SDK needed
+gradlew.bat :android:ui-core:test         # pairing/approval/bot-list/log/notification logic, no SDK needed
 gradlew.bat :android:app:assembleDebug    # needs an Android SDK + accepted licences
 ```
 

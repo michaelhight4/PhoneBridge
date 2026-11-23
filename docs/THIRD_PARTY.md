@@ -1,4 +1,4 @@
-# Third-party software
+﻿# Third-party software
 
 PhoneBridge is MIT licensed. This file lists every third-party library or algorithm source used, with
 its licence, so the whole dependency tree stays licence-compatible (MIT/Apache/BSD/CC0 preferred; no
@@ -26,50 +26,23 @@ unchanged on the JVM and on Android.
 | Thing | Source | Notes |
 | --- | --- | --- |
 | Noise `XX` handshake, `CipherState`, `SymmetricState`, transport keys | [The Noise Protocol Framework, revision 34](https://noiseprotocol.org/noise.html) | Implemented from the published specification in `core/.../crypto/Noise.kt`; no Noise library code was copied or linked (no maintained JVM Noise library was available under a compatible licence for our needs) |
-| Crockford base32 pairing codes + CRC-5 check symbol | [Crockford base32](https://www.crockford.com/base32.html) alphabet, CRC-5/USB polynomial `0x05` | `core/.../pairing/ShortCode.kt`; the exact algorithm is documented in docs/PROTOCOL.md |
-| Base64url, RFC 4648 base32 | RFC 4648 | `core/.../util/B64Url.kt` uses `java.util.Base64` (present on Android API 26+); `core/.../util/Base32.kt` is local |
+| Crockford base32 (`peer_id`, fingerprint, short codes) + CRC-5 check symbol | [Crockford base32](https://www.crockford.com/base32.html) alphabet, CRC-5/USB polynomial `0x05` | `core/.../util/Base32.kt`, `core/.../pairing/ShortCode.kt`; the exact algorithm is documented in docs/PROTOCOL.md |
+| Base64url | RFC 4648 | `core/.../util/B64Url.kt` uses `java.util.Base64` (present on Android API 26+) |
 | HKDF-SHA256 | RFC 5869 | `core/.../crypto/Primitives.kt` |
-
-## Android app + executor (`android/`)
-
-| What | Licence | How it is used |
-| --- | --- | --- |
-| Kotlin standard library (`org.jetbrains.kotlin:kotlin-stdlib`) | Apache-2.0 | Language runtime; pulled in by the Kotlin/Android Gradle plugins. |
-| `kotlin("test")` (kotlin-test + JUnit 5 platform) | Apache-2.0 | JVM unit tests in `android/executor-core`. Test scope only. |
-| Android Gradle plugin `com.android.application` 9.0.1 | Apache-2.0 | Build only, resolved from `google()` in `settings.gradle.kts` `pluginManagement`. Not shipped in the APK. |
-| Android platform APIs (`android.*`, `AndroidX`-free) | Apache-2.0 | Used directly through the SDK; no third-party Android libraries are bundled other than Shizuku below. |
-| [Shizuku API](https://github.com/RikkaApps/Shizuku-API) (`dev.rikka.shizuku:api` + `:provider` + `:aidl`) 13.1.5 | MIT (the AAR/POM metadata says MIT; some guides say Apache-2.0, the published licence is MIT) | The Full-level privileged path: the `ShizukuProvider` binder, the permission request, and a shell process started through the shipped `IShizukuService`/`IRemoteProcess` AIDL (`ShizukuProcess`). Shizuku (the user-installed app) owns the privileged side; PhoneBridge ships only the client API. Root and ADB/Sui backends are both supported by Shizuku itself. |
-| `:core` (this repo) | MIT | Shared protocol/crypto/pairing library; consumed as a Gradle project dependency. |
-| AndroidX `annotation` 1.3.0 | Apache-2.0 | Transitive runtime dependency of the Shizuku AARs (@NonNull/@Nullable annotations only). Not used directly by PhoneBridge code. |
-
-Shizuku 13.1.5 removed the `Shizuku.newProcess` convenience helper (deprecated upstream in favour of a
-`UserService`), but the service AIDL still implements `newProcess`. `android/app/.../ShizukuProcess.kt`
-is a minimal `Process` adapter over `IRemoteProcess` (file-descriptor streams plus the remote
-wait/exit/destroy calls) so the tested plain-Kotlin `ShellRunner` keeps owning timeouts, stdin and
-output caps. If a future Shizuku removes `newProcess` from the service, that one class is replaced by a
-UserService binding and nothing above the seam changes.
-
-Nothing else was copied in from another project for the Android work; the accessibility tree
-mapping, gesture dispatch, Shizuku command building/quoting, permission checks and control queue are
-written here. The app deliberately has no AndroidX/Compose dependency yet (plain platform `Activity`
-+ views), so there is nothing else to license-track.
+| Relay `hello` key-ownership proof (`dh-hmac-sha256`) | docs/PROTOCOL.md section on the relay handshake | `core/.../crypto/HelloAuth.kt`; HMAC-SHA256 keyed by the X25519 shared secret with the relay's ephemeral key |
 
 ## Relay (`relay/`)
 
-| What | Licence | How it is used |
-| --- | --- | --- |
-| Kotlin standard library, `kotlin("test")` + JUnit 5 | Apache-2.0 / EPL-2.0 | Runtime and test-only, as above. |
-| [Google Gson](https://github.com/google/gson) 2.11.0 | Apache-2.0 | JSON encoding/decoding of relay messages. Small (~280 KB), pure Java, works on Android API 26+ and on a plain JVM, and keeps the relay embeddable in the phone app and the desktop app. Only the routing fields of an envelope are parsed; encrypted payloads are never decoded. |
+The relay has no third-party runtime dependency of its own: it uses the Kotlin standard library and
+`:core` (protocol envelopes, identity, HelloAuth, JSON). The former Gson and duplicate crypto layer
+were removed when the relay moved onto the shared `:core` types.
 
 Implemented in the relay from specifications (no third-party code):
 
 | Area | Specification | Where |
 | --- | --- | --- |
 | WebSocket server and client, framing, masking, close codes | RFC 6455 | `relay/src/main/kotlin/dev/phonebridge/relay/ws/` |
-| X25519 scalar multiplication | RFC 7748 (validated against its section 5.2 and 6.1 test vectors) | `relay/.../crypto/X25519.kt` |
 | Self-signed X.509 v1 certificate and PKCS#12 storage | RFC 5280 / PKCS#12 | `relay/.../crypto/Tls.kt` |
-| Crockford base32, check symbols, confusable mapping | Crockford base32 specification | `relay/.../crypto/Base32.kt` |
-| SHA-256 and HMAC-SHA256 | FIPS 180-4 / RFC 2104, via `java.security` / `javax.crypto` | `relay/.../crypto/Codec.kt` |
 | TLS transport | JSSE (`javax.net.ssl`), part of the JDK and Android | `relay/.../crypto/Tls.kt` |
 
 ### Why the relay's WebSocket layer is not a library
@@ -89,14 +62,42 @@ The relay uses only APIs present on Android API 26+ (`java.util.Base64`, `javax.
 `java.security`, `java.util.concurrent`, `java.io`, `java.net`) and on JDK 17+, so the same classes run
 in the Android app, on the desktop and on a VPS. It ships no images, fonts or other binary assets.
 
-## Core (`core/`)
+## Android app, views and executor (`android/`)
 
-Kotlin standard library and `kotlin("test")` only at the time of writing; the protocol, crypto and
-pairing task owns this section.
+| What | Licence | How it is used |
+| --- | --- | --- |
+| Kotlin standard library (`org.jetbrains.kotlin:kotlin-stdlib`) | Apache-2.0 | Language runtime; pulled in by the Kotlin/Android Gradle plugins. |
+| `kotlin("test")` (kotlin-test + JUnit 5 platform) | Apache-2.0 | JVM unit tests in `android/executor-core` and `android/ui-core`. Test scope only. |
+| Android Gradle plugin `com.android.application` 9.0.1 | Apache-2.0 | Build only, resolved from `google()` in `settings.gradle.kts` `pluginManagement`. Not shipped in the APK. |
+| Android platform APIs (`android.*`, `AndroidX`-free) | Apache-2.0 | Used directly through the SDK; the app uses plain platform `Activity` + views, so no AndroidX/Compose is bundled. |
+| `:core` (this repo) | MIT | Shared protocol/crypto/pairing library and JSON bot registry; consumed as a Gradle project dependency. |
+| `:relay` (this repo) | MIT | Embedded relay (`Relay.start`) and the reconnecting `RelayClient`; consumed as a Gradle project dependency. |
+| [ZXing core](https://github.com/zxing/zxing) (`com.google.zxing:core`) 3.5.3 | Apache-2.0 | Encoding the `phonebridge://pair?...` link into the pairing QR bitmap. Core only (no `android-core`/`zxing-android-embedded`), about 500 KB, works on Android API 26+. |
+| [Shizuku API](https://github.com/RikkaApps/Shizuku-API) (`dev.rikka.shizuku:api` + `:provider` + `:aidl`) 13.1.5 | MIT (the published AAR/POM metadata says MIT; some guides say Apache-2.0) | The Full-level privileged path: the `ShizukuProvider` binder, the permission request, and a shell process started through the shipped `IShizukuService`/`IRemoteProcess` AIDL (`ShizukuProcess`). Shizuku (the user-installed app) owns the privileged side; PhoneBridge ships only the client API. Root and ADB/Sui backends are both supported by Shizuku itself. |
+| AndroidX `annotation` 1.3.0 | Apache-2.0 | Transitive runtime dependency of the Shizuku AARs (`@NonNull`/`@Nullable` annotations only). Not used directly by PhoneBridge code. |
 
-## MCP server (`mcp/`)
+Shizuku 13.1.5 removed the `Shizuku.newProcess` convenience helper (deprecated upstream in favour of a
+`UserService`), but the service AIDL still implements `newProcess`. `android/app/.../ShizukuProcess.kt`
+is a minimal `Process` adapter over `IRemoteProcess` (file-descriptor streams plus the remote
+wait/exit/destroy calls) so the tested plain-Kotlin `ShellRunner` keeps owning timeouts, stdin and
+output caps. If a future Shizuku removes `newProcess` from the service, that one class is replaced by a
+UserService binding and nothing above the seam changes.
 
-Node/TypeScript dependencies are recorded here when that module lands.
+Nothing was copied in from another project for the Android tasks; the accessibility tree mapping,
+gesture dispatch, command routing, permission checks, control queue, pairing countdown, bot list,
+notification and log logic are written here.
+
+## Protocol schemas and test tools (`protocol/`, `tests/`)
+
+| Library | Version | Licence | Used for |
+| --- | --- | --- | --- |
+| [Ajv](https://github.com/ajv-validator/ajv) | ^8.17.1 | MIT | JSON Schema validation of every protocol example (dev/test only). |
+| [ajv-formats](https://github.com/ajv-validator/ajv-formats) | ^3.0.1 | MIT | `date-time`, `uri` and other format checks in the schemas (dev/test only). |
+| [Vitest](https://github.com/vitest-dev/vitest) | ^3.2.4 | MIT | Conformance test runner (dev/test only). |
+| [ws](https://github.com/websockets/ws) | ^8.18.0 | MIT | Mock device relay client for the Node test harness (dev/test only). |
+
+None of these are shipped in the phone app, the relay jar or the MCP server; they are invoked by
+`npm test` in `tests/conformance` and `tests/mock-device`.
 
 ## Test-only dependencies
 
@@ -108,3 +109,7 @@ Node/TypeScript dependencies are recorded here when that module lands.
 
 None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
 source and author before they are committed.
+
+## MCP server (`mcp/`)
+
+Node/TypeScript dependencies are recorded here when that module lands.

@@ -1,13 +1,17 @@
 package dev.phonebridge.relay
 
-import com.google.gson.JsonObject
+import dev.phonebridge.core.crypto.HelloAuth
+import dev.phonebridge.core.crypto.Primitives
+import dev.phonebridge.core.identity.Identity
+import dev.phonebridge.core.model.EnvelopeCodec
+import dev.phonebridge.core.model.PeerRole
+import dev.phonebridge.core.model.RelayEnvelope
+import dev.phonebridge.core.model.RelayType
+import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.relay.client.RelayClient
 import dev.phonebridge.relay.client.RelayClientConfig
-import dev.phonebridge.relay.crypto.Codec
-import dev.phonebridge.relay.crypto.HelloProof
-import dev.phonebridge.relay.crypto.PeerKeyPair
+import dev.phonebridge.relay.client.ReconnectPolicy
 import dev.phonebridge.relay.crypto.Tls
-import dev.phonebridge.relay.json.Json
 import dev.phonebridge.relay.ws.WebSocketClient
 import dev.phonebridge.relay.ws.WebSocketConnection
 import java.net.URI
@@ -44,17 +48,15 @@ object TestSupport {
 
     fun client(
         relay: RelayHandle,
-        identity: PeerKeyPair = PeerKeyPair.generate(),
-        role: String = "bot",
+        identity: Identity = Identity.generate(PeerRole.BOT),
         maxEnvelopeBytes: Int = 16 * 1024 * 1024
     ): RelayClient = RelayClient(
         RelayClientConfig(
             url = relay.url,
             identity = identity,
-            role = role,
             tlsPin = relay.fingerprint,
             maxEnvelopeBytes = maxEnvelopeBytes,
-            reconnect = dev.phonebridge.relay.client.ReconnectPolicy(
+            reconnect = ReconnectPolicy(
                 initialDelayMs = 50,
                 maxDelayMs = 500,
                 multiplier = 1.5,
@@ -62,6 +64,8 @@ object TestSupport {
             )
         )
     )
+
+    fun errorCode(envelope: RelayEnvelope?): String? = envelope?.error?.code
 
     fun waitUntil(timeoutMs: Long, description: String, condition: () -> Boolean): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -106,7 +110,7 @@ object TestSupport {
  * refuse to misbehave.
  */
 class RawPeer(
-    val identity: PeerKeyPair,
+    val identity: Identity,
     private val url: String,
     private val tlsPin: String? = null,
     private val maxMessageBytes: Int = 16 * 1024 * 1024
@@ -114,7 +118,7 @@ class RawPeer(
     lateinit var connection: WebSocketConnection
         private set
 
-    private lateinit var challenge: JsonObject
+    private lateinit var challenge: RelayEnvelope
 
     fun open(readChallenge: Boolean = true): RawPeer {
         val uri = URI(url)
@@ -127,31 +131,41 @@ class RawPeer(
             uri = uri,
             sslContext = context,
             timeoutMs = 5000,
-            maxMessageBytes = maxMessageBytes
+            maxMessageBytes = maxMessageBytes,
+            verifyHostname = tlsPin == null
         )
         connection.setReadTimeout(5000)
         if (readChallenge) {
-            challenge = readJson() ?: throw IllegalStateException("relay sent no challenge")
+            challenge = readEnvelope() ?: throw IllegalStateException("relay sent no challenge")
         }
         return this
     }
 
     /** Uses a challenge that was read out of band, e.g. after sending hello before reading it. */
-    fun adoptChallenge(obj: JsonObject) {
-        challenge = obj
+    fun adoptChallenge(envelope: RelayEnvelope) {
+        challenge = envelope
     }
 
-    fun challengeRelayId(): String = Json.string(challenge, "relay_id") ?: ""
+    fun challengeRelayId(): String = challenge.relayId ?: ""
 
-    fun challengeNonce(): String = Json.string(challenge, "nonce") ?: ""
+    fun challengeNonce(): String = challenge.nonce ?: ""
 
-    fun send(json: JsonObject) {
-        connection.sendText(json.toString())
+    fun send(envelope: RelayEnvelope) {
+        connection.sendText(EnvelopeCodec.encode(envelope))
     }
 
-    fun readJson(): JsonObject? {
+    /** Sends a frame that is deliberately outside the envelope model (oversize tests). */
+    fun sendRawText(text: String) {
+        connection.sendText(text)
+    }
+
+    fun readEnvelope(): RelayEnvelope? {
         val bytes = connection.readMessage() ?: return null
-        return Json.parseObject(String(bytes, Charsets.UTF_8))
+        return try {
+            EnvelopeCodec.decode(String(bytes, Charsets.UTF_8))
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun helloSigned(
@@ -160,48 +174,50 @@ class RawPeer(
         publicKeyOverride: String? = null,
         proofOverride: String? = null,
         nonceOverride: String? = null,
-        role: String = "bot"
-    ): JsonObject {
-        val relayPublic = Codec.b64urlDecode(Json.string(challenge, "relay_pub")!!)!!
+        role: PeerRole = PeerRole.BOT
+    ): RelayEnvelope {
+        val relayPublic = B64Url.decode(challenge.relayPub ?: error("the challenge has no relay_pub"))
         val relayId = challengeRelayId()
         val nonceB64 = nonceOverride ?: challengeNonce()
-        val nonce = Codec.b64urlDecode(nonceB64) ?: ByteArray(32)
+        val nonce = runCatching { B64Url.decode(nonceB64) }.getOrDefault(ByteArray(32))
         val from = fromOverride ?: identity.peerId
-        val proof = proofOverride ?: Codec.b64url(
-            HelloProof.compute(
+        val proof = proofOverride ?: B64Url.encode(
+            HelloAuth.proof(
                 peerPrivateKey = identity.privateKey,
+                peerPublicKey = identity.publicKey,
                 relayPublicKey = relayPublic,
                 relayId = relayId,
                 peerId = from,
                 nonce = nonce
             )
         )
-        val hello = Json.obj(
-            "v" to 1,
-            "type" to "hello",
-            "from" to from,
-            "pub" to (publicKeyOverride ?: Codec.b64url(identity.publicKey)),
-            "sig" to proof,
-            "nonce" to nonceB64,
-            "role" to role
+        val hello = RelayEnvelope(
+            type = RelayType.HELLO,
+            from = from,
+            pub = publicKeyOverride ?: identity.publicKeyBase64,
+            sig = proof,
+            nonce = nonceB64,
+            role = role,
+            moveToken = moveToken
         )
-        moveToken?.let { hello.addProperty("move_token", it) }
         send(hello)
         return hello
     }
 
     /** Opens, authenticates and returns the `hello_ok`. */
-    fun authenticate(): JsonObject {
+    fun authenticate(): RelayEnvelope {
         open()
         helloSigned()
-        val reply = readJson() ?: throw IllegalStateException("relay closed during hello")
-        check(Json.string(reply, "type") == "hello_ok") {
-            "authentication failed: $reply"
-        }
+        val reply = readEnvelope() ?: throw IllegalStateException("relay closed during hello")
+        check(reply.type == RelayType.HELLO_OK) { "authentication failed: $reply" }
         return reply
     }
 
     override fun close() {
         if (::connection.isInitialized) connection.closeQuietly(1000, "test done")
+    }
+
+    companion object {
+        fun randomProof(): String = B64Url.encode(Primitives.randomBytes(32))
     }
 }

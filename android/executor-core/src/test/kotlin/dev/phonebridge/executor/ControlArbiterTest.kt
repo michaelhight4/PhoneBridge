@@ -33,6 +33,18 @@ class ControlArbiterTest {
     }
 
     @Test
+    fun `kick everyone clears the holder and the queue`() {
+        arbiter.requestControl("bot-a")
+        arbiter.requestControl("bot-b")
+        arbiter.requestControl("bot-c")
+
+        assertEquals(listOf("bot-a", "bot-b", "bot-c"), arbiter.kickAll())
+        assertNull(arbiter.holder())
+        assertEquals(emptyList<String>(), arbiter.queueSnapshot())
+        assertEquals(emptyList<String>(), arbiter.kickAll())
+    }
+
+    @Test
     fun `release promotes the next waiter`() {
         arbiter.requestControl("bot-a")
         arbiter.requestControl("bot-b")

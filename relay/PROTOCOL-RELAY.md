@@ -1,10 +1,29 @@
-# Relay wire contract (extension of docs/PROTOCOL.md)
+# Relay wire contract
 
-`docs/PROTOCOL.md` is owned by the core task. This file records the concrete relay-level messages this
-module implements. Everything here is **additive**: envelopes, identities, `hello`, `route`,
-`relay_moved` fields, pairing offers and the 16 MiB / rate-limit rules all come from the base protocol
-unchanged. The additions are the `challenge` message (the nonce a peer proves against), the `hello_ok`
-confirmation, the two explicit short-code mailbox messages and the error codes the relay can return.
+The message model itself lives in `:core` (`RelayEnvelope`, `EnvelopeCodec`, `HelloAuth`, `PeerIds`,
+`ShortCode`) and is documented in `docs/PROTOCOL.md`. This file records the concrete behaviour of the
+relay: the challenge/hello exchange it drives, what it forwards and what it refuses, the short-code
+mailbox, hand-over tokens, the `relay_pin` pairing field and the limits it enforces.
+
+Everything here matches the merged `:core` implementation; the relay has no protocol types of its own.
+
+## 0. Pinning the relay in a pairing offer
+
+A relay that terminates TLS with a self-signed certificate exposes the base64url SHA-256 of its DER
+certificate (`RelayHandle.fingerprint`, printed by the standalone jar as `cert pin`). Add it to the
+pairing offer next to the relay URL:
+
+```json
+{ "v": 1, "relay": "wss://192.168.1.20:8443",
+  "relay_pin": "<base64url SHA-256 of the relay certificate>",
+  "device_id": "<peer_id>", "device_pub": "<b64>", "secret": "<b64 32 bytes>",
+  "code": "7K4-Q9M", "exp": 1790000000 }
+```
+
+The bot passes `relay_pin` as `RelayClientConfig.tlsPin`, so the WebSocket handshake only succeeds
+against that exact certificate. A relay behind a normal CA certificate omits `relay_pin` and the client
+uses the system trust store (with host name verification). This field is optional and additive;
+`docs/PROTOCOL.md` keeps owning the offer definition.
 
 ## 1. Connection and authentication
 
@@ -131,9 +150,11 @@ The device stores its pairing offer under the short code; a bot looks the code u
 
 - Both messages require an authenticated `hello`. The offer itself is the JSON from
   `docs/PROTOCOL.md` and is stored opaquely.
-- Codes are normalized: case, separators, and the Crockford confusables `O` -> `0`, `I`/`L` -> `1`.
-  The mailbox key is the canonical six symbol form (`7K4-Q9M`). A wrong check symbol is tolerated by
-  the relay (the device's own check algorithm stays authoritative).
+- Codes are normalized with `:core`'s `ShortCode` rules: case, separators, and the Crockford
+  confusables `O` -> `0`, `I`/`L` -> `1`. The mailbox key is the canonical six symbol form
+  (`7K4-Q9B`). The relay does not enforce the CRC-5 check symbol itself, so a device that stores a code
+  the user typed slightly wrong still gets a lookup result instead of a protocol error; clients can use
+  `ShortCode.isValid` when they want to catch typos early.
 - The offer is released **once**: the entry is removed by the first successful lookup.
 - The offer expires after `pairMailboxTtlMs` (10 minutes per the protocol). A lookup after expiry is
   `code_expired`; an unknown code is `code_not_found`.
@@ -199,7 +220,8 @@ The relay that is handing over sends every connected peer:
 
 ## 7. Compatibility
 
-All additions use new `type` values and optional fields, so a peer that implements only
-`docs/PROTOCOL.md` still connects, authenticates and routes. If the core task changes the `hello`
-proof format, keep the `proof` string in `challenge` as the negotiation point; the relay currently
-answers `dh-hmac-sha256` and nothing else.
+The envelope shapes, identity rules and proof are `:core`'s (`docs/PROTOCOL.md`), so a peer that
+implements the core protocol connects, authenticates and routes against this relay without anything
+relay-specific. The optional fields this relay adds are `relay_pin` in pairing offers and `token` in
+`relay_moved`; peers that ignore them still work. If the proof construction ever changes, the `proof`
+string in `challenge` is the negotiation point; the relay answers `dh-hmac-sha256` and nothing else.

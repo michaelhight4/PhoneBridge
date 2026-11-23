@@ -2,8 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- targetSdk 36 requires a type for every foreground service; the bridge is both. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Shizuku's own API permission. The user grants it in the Shizuku app; PhoneBridge only asks. -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
@@ -38,6 +44,39 @@
         </activity>
 
         <activity
+            android:name=".PairingActivity"
+            android:exported="false"
+            android:label="@string/pairing_title" />
+
+        <activity
+            android:name=".ApprovalActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:label="@string/approval_title"
+            android:theme="@style/Theme.PhoneBridge.Approval" />
+
+        <activity
+            android:name=".BotListActivity"
+            android:exported="false"
+            android:label="@string/bots_title" />
+
+        <activity
+            android:name=".ActivityLogActivity"
+            android:exported="false"
+            android:label="@string/log_title" />
+
+        <activity
+            android:name=".RelayActivity"
+            android:exported="false"
+            android:label="@string/relay_title" />
+
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:label="@string/onboarding_title" />
+
+        <activity
             android:name=".ShizukuPermissionActivity"
             android:exported="false"
             android:label="@string/shizuku_title" />
@@ -66,6 +105,25 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- The encrypted link to the chosen relay. It survives the app being swiped away so a bot
+             can still be stopped from the notification. -->
+        <service
+            android:name=".BridgeService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the user's own PhoneBridge relay for their own paired devices." />
+        </service>
+
+        <!-- Read-only access to the .pbpair export in the share sheet; nothing else is shared. -->
+        <provider
+            android:name=".PairingFileProvider"
+            android:authorities="dev.phonebridge.app.pairing"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 
 </manifest>

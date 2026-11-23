@@ -1,9 +1,10 @@
 package dev.phonebridge.relay
 
+import dev.phonebridge.core.identity.Identity
+import dev.phonebridge.core.model.PeerRole
+import dev.phonebridge.core.model.RelayEnvelope
+import dev.phonebridge.core.model.RelayType
 import dev.phonebridge.relay.client.RelayClientError
-import dev.phonebridge.relay.crypto.PeerKeyPair
-import dev.phonebridge.relay.envelope.RelayEnvelope
-import dev.phonebridge.relay.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -14,7 +15,7 @@ class RelayLimitsTest {
     fun `a peer that floods envelopes is rate limited`() {
         val relay = TestSupport.testRelay(rateLimit = RateLimitConfig(maxMessages = 4, windowMs = 2000, burst = 4))
         val bot = TestSupport.client(relay)
-        val device = TestSupport.client(relay, role = "device")
+        val device = TestSupport.client(relay, Identity.generate(PeerRole.DEVICE))
         val atDevice = TestSupport.Collector<RelayEnvelope>()
         val errors = TestSupport.Collector<RelayClientError>()
         device.onRoute = { atDevice.add(it) }
@@ -44,32 +45,31 @@ class RelayLimitsTest {
     @Test
     fun `an oversize frame is dropped and its connection closed`() {
         val relay = TestSupport.testRelay(maxEnvelopeBytes = 4096)
-        val receiver = TestSupport.client(relay, role = "device")
+        val receiver = TestSupport.client(relay, Identity.generate(PeerRole.DEVICE))
         val atReceiver = TestSupport.Collector<RelayEnvelope>()
         receiver.onRoute = { atReceiver.add(it) }
         try {
             receiver.start()
             assertTrue(receiver.awaitConnected(5000))
 
-            RawPeer(PeerKeyPair.generate(), relay.url, maxMessageBytes = 1 shl 20).use { peer ->
+            RawPeer(Identity.generate(PeerRole.BOT), relay.url, maxMessageBytes = 1 shl 20).use { peer ->
                 peer.authenticate()
                 val big = "x".repeat(8192)
                 try {
                     peer.send(
-                        Json.obj(
-                            "v" to 1,
-                            "type" to "route",
-                            "from" to peer.identity.peerId,
-                            "to" to receiver.peerId,
-                            "id" to "oversize",
-                            "payload" to big
+                        RelayEnvelope(
+                            type = RelayType.ROUTE,
+                            from = peer.identity.peerId,
+                            to = receiver.peerId,
+                            id = "oversize",
+                            payload = big
                         )
                     )
                 } catch (_: Exception) {
                     // The relay may reset the connection while the frame is still being written.
                 }
                 try {
-                    peer.readJson()
+                    peer.readEnvelope()
                 } catch (_: Exception) {
                     // Expected: the relay closed the connection.
                 }
@@ -90,31 +90,30 @@ class RelayLimitsTest {
     @Test
     fun `the default limit drops a frame larger than 16 MiB`() {
         val relay = TestSupport.testRelay()
-        val receiver = TestSupport.client(relay, role = "device")
+        val receiver = TestSupport.client(relay, Identity.generate(PeerRole.DEVICE))
         val atReceiver = TestSupport.Collector<RelayEnvelope>()
         receiver.onRoute = { atReceiver.add(it) }
         try {
             receiver.start()
             assertTrue(receiver.awaitConnected(5000))
 
-            RawPeer(PeerKeyPair.generate(), relay.url, maxMessageBytes = 32 * 1024 * 1024).use { peer ->
+            RawPeer(Identity.generate(PeerRole.BOT), relay.url, maxMessageBytes = 32 * 1024 * 1024).use { peer ->
                 peer.authenticate()
-                val big = "y".repeat(16 * 1024 * 1024)
+                // Built by hand: :core's EnvelopeCodec would refuse to encode over its own 16 MiB cap,
+                // and this test is about the relay's transport cap.
+                val text = buildString {
+                    append("{\"v\":1,\"type\":\"route\",\"from\":\"").append(peer.identity.peerId)
+                    append("\",\"to\":\"").append(receiver.peerId)
+                    append("\",\"id\":\"huge\",\"payload\":\"")
+                    append("y".repeat(16 * 1024 * 1024))
+                    append("\"}")
+                }
                 try {
-                    peer.send(
-                        Json.obj(
-                            "v" to 1,
-                            "type" to "route",
-                            "from" to peer.identity.peerId,
-                            "to" to receiver.peerId,
-                            "id" to "huge",
-                            "payload" to big
-                        )
-                    )
+                    peer.sendRawText(text)
                 } catch (_: Exception) {
                 }
                 try {
-                    peer.readJson()
+                    peer.readEnvelope()
                 } catch (_: Exception) {
                 }
                 TestSupport.waitUntil(5000, "the oversize peer to be disconnected") {

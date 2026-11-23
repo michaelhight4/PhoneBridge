@@ -12,9 +12,9 @@ java { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaV
 tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
 
 dependencies {
+    // Envelope/identity types, X25519, HMAC and the shared JSON config all come from :core.
+    // :core exposes kotlinx-serialization-json and Bouncy Castle as api() dependencies.
     implementation(project(":core"))
-    // Gson (Apache-2.0) is small and runs on Android API 26+ and on the JVM. See docs/THIRD_PARTY.md.
-    implementation("com.google.code.gson:gson:2.11.0")
     testImplementation(kotlin("test"))
 }
 tasks.test { useJUnitPlatform() }

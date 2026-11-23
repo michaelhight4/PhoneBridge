@@ -2,10 +2,12 @@ package dev.phonebridge.core.model
 
 import dev.phonebridge.core.ProtocolException
 import dev.phonebridge.core.Version
+import dev.phonebridge.core.crypto.HelloAuth
 import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.core.util.PbJson
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import java.util.UUID
 
 /** Who is on the other end of an envelope. */
@@ -35,23 +37,46 @@ object RelayType {
     const val ERROR = "error"
     const val RELAY_MOVED = "relay_moved"
 
+    /** Relay -> peer: the authentication challenge (nonce + fresh ephemeral key). */
+    const val CHALLENGE = "challenge"
+
+    /** Relay -> peer: authentication accepted, with limits. */
+    const val HELLO_OK = "hello_ok"
+
+    /** Device -> relay: store a pairing offer under its short code. */
+    const val PAIR_STORE = "pair_store"
+
+    /** Relay -> device: the offer is stored until `expires`. */
+    const val PAIR_STORED = "pair_stored"
+
     /** Bot -> relay: "what offer is behind this short code?". */
     const val PAIR_LOOKUP = "pair_lookup"
 
-    /** Relay -> bot: the offer JSON, base64url in `payload`. */
+    /** Relay -> bot: the offer that was stored, released once. */
     const val PAIR_OFFER = "pair_offer"
 
     val ALL: Set<String> = setOf(
-        HELLO, ROUTE, PING, PONG, ERROR, RELAY_MOVED, PAIR_LOOKUP, PAIR_OFFER,
+        HELLO, ROUTE, PING, PONG, ERROR, RELAY_MOVED, CHALLENGE, HELLO_OK, PAIR_STORE, PAIR_STORED, PAIR_LOOKUP, PAIR_OFFER,
     )
 }
 
+/** The rate/size limits a relay reports in `hello_ok`. */
+@Serializable
+data class RelayLimits(
+    @SerialName("max_envelope_bytes")
+    val maxEnvelopeBytes: Long = EnvelopeCodec.MAX_BYTES.toLong(),
+    @SerialName("rate_messages")
+    val rateMessages: Int? = null,
+    @SerialName("rate_window_ms")
+    val rateWindowMs: Int? = null,
+)
+
 /**
  * The plaintext frame the relay sees and routes. It carries no application data: `payload` is a
- * base64url end-to-end ciphertext ([dev.phonebridge.core.crypto.Frame]).
+ * base64url end-to-end frame ([dev.phonebridge.core.crypto.Frame]) for `route`.
  *
  * All fields beyond `v`/`type` are optional because each message type uses a different subset; the
- * shapes are listed in docs/PROTOCOL.md.
+ * shapes are listed in docs/PROTOCOL.md and relay/PROTOCOL-RELAY.md.
  */
 @Serializable
 data class RelayEnvelope(
@@ -60,23 +85,37 @@ data class RelayEnvelope(
     val from: String? = null,
     val to: String? = null,
     val id: String? = null,
+    /** base64url end-to-end frame for `route`. */
     val payload: String? = null,
-    // hello (peer -> relay, and the relay's challenge)
+    // hello / challenge / hello_ok
     val pub: String? = null,
     val sig: String? = null,
     val role: PeerRole? = null,
     val nonce: String? = null,
     @SerialName("relay_pub")
     val relayPub: String? = null,
+    @SerialName("relay_id")
+    val relayId: String? = null,
+    /** Challenge: which key-ownership proof the relay expects (`dh-hmac-sha256`). */
+    val proof: String? = null,
+    /** Challenge / relay_moved / pair messages: unix seconds. */
+    val expires: Long? = null,
+    @SerialName("move_token")
+    val moveToken: String? = null,
+    /** hello_ok: the authenticated peer id. */
+    val peer: String? = null,
+    @SerialName("server_time")
+    val serverTime: Long? = null,
+    val limits: RelayLimits? = null,
     // error
+    val error: ErrorBody? = null,
+    // short-code mailbox
     val code: String? = null,
-    val message: String? = null,
-    val pos: Int? = null,
+    val offer: JsonObject? = null,
     // relay_moved
     @SerialName("new_url")
     val newUrl: String? = null,
     val token: String? = null,
-    val expires: Long? = null,
 ) {
     /** True for a type this protocol version understands; unknown types must be ignored, not fatal. */
     val isKnownType: Boolean
@@ -90,16 +129,42 @@ data class RelayEnvelope(
     fun payloadBytes(): ByteArray =
         payload?.let { B64Url.decode(it) } ?: throw ProtocolException("envelope has no payload")
 
+    /** Decodes the `offer` object carried by `pair_offer`/`pair_store`. */
+    fun offerAsPairingOffer(): PairingOffer {
+        val element = offer ?: throw ProtocolException("envelope has no offer")
+        return try {
+            PbJson.decodeFromJsonElement(PairingOffer.serializer(), element)
+        } catch (e: IllegalArgumentException) {
+            throw ProtocolException("malformed pairing offer in envelope", e)
+        }
+    }
+
     companion object {
         fun newId(): String = UUID.randomUUID().toString()
 
-        /** A peer announcing itself to the relay, answering the relay's challenge. */
+        /** Relay -> peer: the authentication challenge. */
+        fun challenge(
+            nonceB64: String,
+            relayPublicKeyB64: String,
+            relayId: String,
+            expires: Long? = null,
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.CHALLENGE,
+            nonce = nonceB64,
+            relayPub = relayPublicKeyB64,
+            relayId = relayId,
+            proof = HelloAuth.PROOF_METHOD,
+            expires = expires,
+        )
+
+        /** Peer -> relay: announce the key, answer the challenge. */
         fun hello(
             from: String,
             publicKeyB64: String,
             role: PeerRole,
-            proofB64: String? = null,
-            nonceB64: String? = null,
+            proofB64: String,
+            nonceB64: String,
+            moveToken: String? = null,
         ): RelayEnvelope = RelayEnvelope(
             type = RelayType.HELLO,
             from = from,
@@ -107,13 +172,23 @@ data class RelayEnvelope(
             role = role,
             sig = proofB64,
             nonce = nonceB64,
+            moveToken = moveToken,
         )
 
-        /** The relay's challenge: a fresh nonce plus a fresh X25519 public key for the proof. */
-        fun helloChallenge(nonceB64: String, relayPublicKeyB64: String): RelayEnvelope = RelayEnvelope(
-            type = RelayType.HELLO,
-            nonce = nonceB64,
-            relayPub = relayPublicKeyB64,
+        /** Relay -> peer: authentication accepted. */
+        fun helloOk(
+            to: String,
+            relayId: String,
+            peer: String = to,
+            serverTime: Long,
+            limits: RelayLimits = RelayLimits(),
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.HELLO_OK,
+            to = to,
+            relayId = relayId,
+            peer = peer,
+            serverTime = serverTime,
+            limits = limits,
         )
 
         /** A routed end-to-end frame. */
@@ -129,22 +204,43 @@ data class RelayEnvelope(
         fun ping(from: String, id: String = newId()): RelayEnvelope =
             RelayEnvelope(type = RelayType.PING, from = from, id = id)
 
-        fun pong(from: String, id: String): RelayEnvelope =
-            RelayEnvelope(type = RelayType.PONG, from = from, id = id)
+        fun pong(to: String, id: String): RelayEnvelope =
+            RelayEnvelope(type = RelayType.PONG, to = to, id = id)
 
-        fun error(code: String, message: String? = null, pos: Int? = null, id: String? = null): RelayEnvelope =
-            RelayEnvelope(type = RelayType.ERROR, id = id, code = code, message = message, pos = pos)
+        /** Relay -> peer error, with the offending envelope's id echoed when there is one. */
+        fun error(code: String, message: String? = null, to: String? = null, id: String? = null): RelayEnvelope =
+            RelayEnvelope(type = RelayType.ERROR, to = to, id = id, error = ErrorBody.of(code, message))
 
         fun relayMoved(newUrl: String, token: String? = null, expires: Long? = null): RelayEnvelope =
             RelayEnvelope(type = RelayType.RELAY_MOVED, newUrl = newUrl, token = token, expires = expires)
+
+        /** Device -> relay: hold an offer under its short code for at most ten minutes. */
+        fun pairStore(from: String, code: String, offer: JsonObject, id: String = newId()): RelayEnvelope =
+            RelayEnvelope(type = RelayType.PAIR_STORE, from = from, code = code, offer = offer, id = id)
+
+        /** Relay -> device: the offer is now in the mailbox. */
+        fun pairStored(to: String, code: String, expires: Long, id: String? = null): RelayEnvelope =
+            RelayEnvelope(type = RelayType.PAIR_STORED, to = to, code = code, expires = expires, id = id)
 
         /** Bot -> relay: ask for the offer behind a short code (`7K4-Q9B`). */
         fun pairLookup(from: String, code: String, id: String = newId()): RelayEnvelope =
             RelayEnvelope(type = RelayType.PAIR_LOOKUP, from = from, code = code, id = id)
 
-        /** Relay -> bot: the offer JSON (bytes of the same JSON a `.pbpair` file holds). */
-        fun pairOffer(offerJson: ByteArray, id: String? = null): RelayEnvelope =
-            RelayEnvelope(type = RelayType.PAIR_OFFER, id = id, payload = B64Url.encode(offerJson))
+        /** Relay -> bot: the stored offer, released once. */
+        fun pairOffer(
+            to: String,
+            code: String,
+            offer: JsonObject,
+            expires: Long,
+            id: String? = null,
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.PAIR_OFFER,
+            to = to,
+            code = code,
+            offer = offer,
+            expires = expires,
+            id = id,
+        )
     }
 }
 

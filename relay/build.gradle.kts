@@ -1,4 +1,7 @@
-plugins { kotlin("jvm") }
+plugins {
+    kotlin("jvm")
+    application
+}
 
 repositories { mavenCentral() }
 
@@ -10,6 +13,31 @@ tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
 
 dependencies {
     implementation(project(":core"))
+    // Gson (Apache-2.0) is small and runs on Android API 26+ and on the JVM. See docs/THIRD_PARTY.md.
+    implementation("com.google.code.gson:gson:2.11.0")
     testImplementation(kotlin("test"))
 }
 tasks.test { useJUnitPlatform() }
+
+application {
+    mainClass.set("dev.phonebridge.relay.MainKt")
+    applicationName = "phonebridge-relay"
+}
+
+// Standalone single-file jar for a VPS: `gradlew.bat :relay:shadowJar`
+// (hand-rolled fat jar so no extra Gradle plugin is required).
+tasks.register<Jar>("shadowJar") {
+    group = "build"
+    description = "Builds a standalone relay jar with all runtime dependencies."
+    archiveBaseName.set("phonebridge-relay")
+    archiveClassifier.set("all")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest { attributes["Main-Class"] = "dev.phonebridge.relay.MainKt" }
+    from(sourceSets.main.get().output)
+    from({
+        configurations.runtimeClasspath.get()
+            .filter { it.name.endsWith(".jar") }
+            .map { zipTree(it) }
+    })
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "module-info.class")
+}

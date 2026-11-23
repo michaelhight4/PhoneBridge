@@ -22,7 +22,15 @@ Relay:
 ```kotlin
 val envelope = EnvelopeCodec.decode(text)          // 16 MiB cap enforced
 if (!envelope.isKnownType) return                  // ignore, do not crash
-val proofOk = HelloAuth.verify(relay.keys.privateKey, peerKey, nonce, proofBytes)
+val proofOk = HelloAuth.verify(
+    relayPrivateKey = relay.keys.privateKey,
+    relayPublicKey = relay.keys.publicKey,          // the per-connection key sent in `challenge`
+    relayId = relay.peerId,
+    peerId = hello.from!!,
+    peerPublicKey = B64Url.decode(hello.pub!!),
+    nonce = challengeNonce,
+    proof = B64Url.decode(hello.sig!!),
+)
 ```
 
 Device side pairing:

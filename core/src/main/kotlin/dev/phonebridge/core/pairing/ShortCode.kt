@@ -1,6 +1,7 @@
 package dev.phonebridge.core.pairing
 
 import dev.phonebridge.core.crypto.Primitives
+import dev.phonebridge.core.util.Base32
 import java.security.SecureRandom
 
 /**
@@ -15,7 +16,8 @@ import java.security.SecureRandom
  * people actually make when copying a code.
  */
 object ShortCode {
-    const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+    /** The Crockford alphabet, shared with [dev.phonebridge.core.util.Base32]. */
+    const val ALPHABET = Base32.ALPHABET
     const val SYMBOLS = 6
     const val DATA_SYMBOLS = 5
 

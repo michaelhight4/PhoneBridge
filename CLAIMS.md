@@ -9,3 +9,4 @@ One line per claimed task: `lane | task | branch | claimed (America/Chicago) | s
 - iceman | JSON Schemas, conformance tests, mock device (protocol/, tests/, docs/TESTING.md) | pb/schemas-mock-device-tests | 2026-11-23 11:16 -0600 | done
 - iceman | CI, security and release docs (.github/, SECURITY.md, CONTRIBUTING.md, docs/ITCH_PAGE.md, docs/USER_GUIDE.md) | pb/ci-security-docs | 2026-11-23 12:36 -0600 | done
 - ds3 | android foreground service, pairing UI, bot list, permissions, notifications (`android/`) | pb/android-service-pairing-ui | 2026-11-23 12:05 PM | done (ui-core 44 JVM tests green, app sources complete; APK build pending Android SDK)
+- ds1 | desktop agent phase 2, Windows first: tray app, pairing, bots, permissions, notifications, activity log, embedded relay, screenshot/stream/input/shell/files/install (`desktop/`) | pb/desktop-agent | 2026-11-23 11:54 AM | in progress

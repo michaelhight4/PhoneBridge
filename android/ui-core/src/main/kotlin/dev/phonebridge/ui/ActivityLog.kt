@@ -1,14 +1,13 @@
 package dev.phonebridge.ui
 
 import dev.phonebridge.core.Version
+import dev.phonebridge.core.util.AtomicFiles
 import dev.phonebridge.core.util.PbJsonPretty
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.io.IOException
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 /** One line in the per-bot activity log: which bot, which command, when, and how it ended. */
@@ -179,7 +178,8 @@ class JsonFileActivityLog(
     private fun load() {
         if (!Files.exists(file)) return
         val text = try {
-            Files.readString(file)
+            // Files.readString is Java 11+ (Android 13); read bytes so this runs on API 26.
+            String(Files.readAllBytes(file), Charsets.UTF_8)
         } catch (e: IOException) {
             throw IllegalStateException("cannot read the activity log at $file", e)
         }
@@ -199,11 +199,8 @@ class JsonFileActivityLog(
         val parent = file.toAbsolutePath().parent
         if (parent != null) Files.createDirectories(parent)
         val temp = file.resolveSibling(file.fileName.toString() + ".tmp")
-        Files.writeString(temp, json)
-        try {
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (e: AtomicMoveNotSupportedException) {
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING)
-        }
+        // Files.writeString is Java 11+ (Android 13); write bytes so this runs on API 26.
+        Files.write(temp, json.toByteArray(Charsets.UTF_8))
+        AtomicFiles.replace(temp, file)
     }
 }

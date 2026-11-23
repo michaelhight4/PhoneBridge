@@ -475,12 +475,22 @@ class CommandExecutorTest {
     @Test
     fun `full commands report shizuku_unavailable without a handler`() {
         val session = Fixtures.fullBot()
+        takeControl(session)
         for (cmd in listOf("install_apk", "shell", "files", "settings")) {
             val response = executor.execute(session, Request("req-$cmd", cmd))
             assertEquals(ErrorCode.SHIZUKU_UNAVAILABLE, response.error?.code, "for $cmd")
         }
         val relay = executor.execute(session, Request("req-relay", "relay_move"))
         assertEquals(ErrorCode.INTERNAL, relay.error?.code)
+    }
+
+    @Test
+    fun `full commands need control as well as the full level`() {
+        val session = Fixtures.fullBot()
+        for (cmd in listOf("install_apk", "shell", "files", "settings", "relay_move")) {
+            val response = executor.execute(session, Request("req-$cmd", cmd))
+            assertEquals(ErrorCode.NOT_CONTROLLER, response.error?.code, "for $cmd")
+        }
     }
 
     @Test
@@ -493,7 +503,10 @@ class CommandExecutorTest {
                 Response.success(request.id, mapOf("handled" to true))
             },
         )
-        val response = withHandler.execute(Fixtures.fullBot(), Request("req-5", "shell", mapOf("command" to "id")))
+        val session = Fixtures.fullBot()
+        assertEquals(true, withHandler.execute(session, Request("req-c", "request_control")).result?.get("granted"))
+
+        val response = withHandler.execute(session, Request("req-5", "shell", mapOf("command" to "id")))
         assertTrue(response.ok)
         assertEquals(true, response.result?.get("handled"))
         assertEquals("shell", seen.single().cmd)

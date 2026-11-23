@@ -324,6 +324,7 @@ class EndToEndTest {
         pairAndOpen(phone, admin, phone.newOffer(), requested = PermissionLevel.FULL)
         assertEquals(relayA.relayId, admin.relayId)
         assertEquals(relayA.relayId, phone.relayId)
+        assertTrue(admin.request(CommandType.REQUEST_CONTROL, RequestControlArgs).ok)
 
         val moved = result<RelayMoveResult>(
             admin.request(CommandType.RELAY_MOVE, RelayMoveArgs(to = relayB.url)),
@@ -340,7 +341,6 @@ class EndToEndTest {
         assertTrue(relayA.peers().isEmpty(), "relay A must be empty after the hand-over")
 
         // The Noise session is peer-to-peer, so it survives the relay changing underneath it.
-        assertTrue(admin.request(CommandType.REQUEST_CONTROL, RequestControlArgs).ok)
         assertTrue(admin.request(CommandType.TAP, TapArgs(x = 42, y = 43)).ok)
         assertEquals(42 to 43, phone.device.taps.last())
         assertEquals(false, result<StatusResult>(admin.request(CommandType.STATUS, StatusArgs), CommandType.STATUS).shizuku)
@@ -353,10 +353,16 @@ class EndToEndTest {
         val admin = bot("Admin")
         pairAndOpen(phone, admin, phone.newOffer(), requested = PermissionLevel.FULL)
 
-        val shell = admin.requestRaw(
-            "shell",
-            kotlinx.serialization.json.buildJsonObject { put("command", kotlinx.serialization.json.JsonPrimitive("id")) },
-        )
+        val shellArgs = kotlinx.serialization.json.buildJsonObject {
+            put("command", kotlinx.serialization.json.JsonPrimitive("id"))
+        }
+        // Full commands act on the device, so they need control like every other device command.
+        val withoutControl = admin.requestRaw("shell", shellArgs)
+        assertFalse(withoutControl.ok)
+        assertEquals("not_controller", withoutControl.error?.code)
+
+        assertTrue(admin.request(CommandType.REQUEST_CONTROL, RequestControlArgs).ok)
+        val shell = admin.requestRaw("shell", shellArgs)
         assertFalse(shell.ok)
         assertEquals("shizuku_unavailable", shell.error?.code)
     }

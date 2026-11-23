@@ -1,9 +1,11 @@
 package dev.phonebridge.executor
 
 /**
- * Handles the Full-level commands (`install_apk`, `shell`, `files`, `settings`, `relay_move`) that
- * live outside this module: they need Shizuku / the relay lane. The Android app can register an
- * implementation later; until then the executor reports `shizuku_unavailable`.
+ * Handles the Full-level commands (`install_apk`, `shell`, `files`, `settings`, `relay_move`).
+ *
+ * The Android app registers [dev.phonebridge.executor.ShizukuFullCommandHandler], which runs the
+ * Shizuku-backed commands as the shell user. Without a handler the executor answers
+ * `shizuku_unavailable` for them, which is also what the app does while Shizuku is not running.
  */
 fun interface FullCommandHandler {
     fun handle(session: BotSession, request: Request): Response

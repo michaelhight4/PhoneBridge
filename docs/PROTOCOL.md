@@ -330,6 +330,9 @@ Codes arrive as strings; unknown codes decode without failing so newer devices c
 
 - `view` may run `status`, `screenshot`, `ui_tree`, `notifications`, concurrently with others.
 - `control` may additionally run commands that act on the device, and must hold control to do so.
+  Full-level commands (`install_apk`, `shell`, `files`, `settings`, `relay_move`) act on the device as
+  well, so they need control too: `CommandType.needsControl` is true for every Control and Full
+  command, and only `request_control`/`release_control` are exempt.
 - `full` may additionally run `install_apk`, `shell`, `files`, `settings`, `relay_move`.
 - Exactly one bot drives at a time. `request_control` grants immediately when free, otherwise queues
   FIFO and reports `position`; a queued bot gets `busy` when it tries to act without control.

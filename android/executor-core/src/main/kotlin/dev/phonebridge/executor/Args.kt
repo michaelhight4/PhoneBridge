@@ -45,6 +45,15 @@ class Args(private val values: Map<String, Any?>) {
 
     fun intOr(name: String, default: Int): Int = int(name) ?: default
 
+    /** Alternate key names for an integer, e.g. `timeout_ms` vs `timeoutMs`. */
+    fun longAny(vararg names: String): Long? {
+        for (name in names) {
+            val value = long(name)
+            if (value != null) return value
+        }
+        return null
+    }
+
     fun boolean(name: String): Boolean? {
         val value = values[name] ?: return null
         return when (value) {
@@ -68,6 +77,12 @@ class Args(private val values: Map<String, Any?>) {
         }
         return null
     }
+
+    /** The decoded value as-is, for fields that may legitimately be a string, number or boolean. */
+    fun raw(name: String): Any? = values[name]
+
+    /** True when the key was present, even with a JSON `null` value. */
+    fun contains(name: String): Boolean = values.containsKey(name)
 
     private fun toLong(name: String, value: Any): Long? = when (value) {
         is Int -> value.toLong()

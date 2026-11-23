@@ -55,6 +55,11 @@ Task: v1 end-to-end integration — JVM fake-phone harness, integration fixes, `
    (Android 13+) although minSdk is 26, and the temp-file rename could throw `AccessDeniedException`
    on Windows (seen once as a flaky `:core:test`). They now use byte IO and a shared
    `core.util.AtomicFiles.replace` that retries briefly and falls back to a non-atomic move.
+6. **Full-level commands did not need control.** `core`'s `CommandType.needsControl` (and PROTOCOL 7)
+   say every command that acts on the device needs control, but the executor let `shell`, `files`,
+   `settings`, `install_apk` and `relay_move` through without it. ds1's Shizuku lane aligned the
+   executor table in the same merge; PROTOCOL 7 now states it explicitly and the e2e covers both the
+   `not_controller` and `shizuku_unavailable` paths.
 
 **Left / next**
 - **MCP server/CLI (task 05) is not on `main`, so that acceptance leg is blocked.** The branch
@@ -82,6 +87,88 @@ cd tests\conformance; npm ci; npm test   # after :e2e:test, also validates the r
 - No `origin` remote, so nothing was pushed (commits only).
 - Task 05 (MCP) as described above.
 - Android SDK/licences for the APK.
+
+## 2026-11-23 11:52 — ds1 — deepseek/deepseek-flash (DeepSeek V4.1 Flash) — task: Shizuku integration (`android/` only)
+
+**Branch** `pb/android-shizuku`. **Done** (JVM-testable layer, app wiring, docs):
+
+- **Full level now needs control.** `Command.INSTALL_APK/SHELL/FILES/SETTINGS/RELAY_MOVE` have
+  `needsControl = true`, matching `core/.../Commands.kt` (`needsControl = level >= CONTROL`) and the
+  task statement. The executor's control check runs before the handler, so a Full bot that is not the
+  controller gets `not_controller`, never a shell command.
+- **`android/executor-core` (plain Kotlin, tested on the JVM):**
+  - `ShizukuState`: `ready` / `not_running` / `not_installed` / `no_permission` / `unsupported`, each
+    with the user-facing hint. `not_running` says Shizuku must be **restarted after every reboot**.
+  - `ShizukuShell` seam (`exec(script, timeoutMs, stdin)`), `ShellResult` (exit, raw stdout bytes,
+    stderr, `timedOut`, `launchFailed`) and `ShellRunner` (8 MiB stdout / 256 KiB stderr caps, stdin
+    on its own thread, SIGTERM then kill at the deadline).
+  - `ShellQuote`: single-quote escaping plus validation of paths (absolute, single line), settings
+    keys (`[A-Za-z0-9_.:-]+`), settings values, shell commands and APK split names.
+  - `ShellFiles`: `files list` (stat, 2000-entry cap with `truncated`), `read` (`head -c` cap,
+    4 MiB), `write` (raw bytes on stdin via `cat >`), `delete` (`rm -rf`); shell errors become
+    `internal`.
+  - `ShellApkInstaller`: PackageInstaller session driven through `pm install-create -r -S` →
+    `pm install-write -S <session> base.apk` (APK on stdin) → `pm install-commit`; abandons the
+    session on failure. The package name comes from the APK manifest (inspector seam) **before** the
+    install, so `{package}` is always known.
+  - `HttpsApkDownloader`: HTTPS only, redirects only to HTTPS, 256 MiB cap. `B64` decodes base64url
+    or standard with/without padding and encodes base64url without padding (PROTOCOL.md §1).
+  - `ShizukuFullCommandHandler`: validates args first (`bad_args` never reaches the device), maps
+    `shizuku_unavailable` / `timeout` / `internal`, and implements:
+    `install_apk {url|data_b64+name}`, `shell {command,timeout_ms}` → `{exit,stdout,stderr}`,
+    `settings {namespace,key,value?}` → `{value}` (`null` for unset), `files {op,path,data_b64?}`
+    → `{op,entries}` / `{op,data_b64,bytes}` / `{op,ok,bytes}` / `{op,ok}`. `relay_move` is left to the
+    relay controller and never touches Shizuku.
+  - **132 JVM tests** (was 74 in executor-core): handler validation/routing, shell timeout, settings
+    get/put and injection rejection, files parse/read/write/delete/caps, install session flow and
+    every failure branch, quoting, base64, `ShellRunner` (fake `Process`), executor integration
+    (level, control, Shizuku outage).
+- **`android/app`:** `ShizukuBridge` (singleton `ShizukuShell` with the live state, binder
+  received/dead + permission-result listeners, `openShizukuOrDownload`); `ShizukuPermissionActivity` +
+  `activity_shizuku.xml` (not installed / not running / not allowed / too old, each with the matching
+  button); Shizuku state line and button on the home screen; `status.shizuku` true only when ready;
+  `ShizukuProcess` starts `sh -c` through the service AIDL; manifest provider/permission/queries.
+- **Merge with the service/UI lane:** `BridgeRuntime` now keeps the Shizuku handler installed
+  permanently and treats `BridgeRuntime.setFullHandler(...)` as the **relay_move** handler only. That
+  keeps both lanes working: the `BridgeService` controller still owns `relay_move`, and stopping the
+  bridge no longer replaces the Shizuku handler with an "unavailable" stub. `BridgeController` itself
+  is unchanged.
+- **Dependencies:** `dev.rikka.shizuku:api/provider/aidl:13.1.5`. The published licence is **MIT**
+  (verified in the POM and AAR metadata), not Apache-2.0 as some guides say. The app module now has a
+  `repositories { google(); mavenCentral() }` block, which the UI lane's ZXing dependency also needs.
+- **Docs:** `docs/THIRD_PARTY.md` records Shizuku 13.1.5 (MIT), the AIDL adapter and AndroidX
+  annotation; `android/README.md` documents the Shizuku design and the split of Full-level commands.
+
+**Protocol notes (no wire changes):** `files.mtime` is **epoch milliseconds** (core's `FileEntry.mtime`
+is a plain Long); `files list` adds an optional `truncated:true` when the 2000-entry cap is hit;
+`install_apk` and `files` results follow `core/model/Commands.kt` exactly. Nothing to renumber.
+
+**How to test**
+```
+gradlew.bat :android:executor-core:test      # 132 tests, no Android SDK needed
+gradlew.bat test                            # repo-wide
+gradlew.bat :android:app:assembleDebug      # needs an Android SDK + accepted licences (pending)
+```
+
+**Left**
+- **APK build pending the Android SDK** (none installed on this PC; do not install one on the user's
+  behalf). The app sources were additionally type-checked against an API 34 `android.jar` with a
+  stub `R`, so the Kotlin is known to compile; expect only AGP/DSL/lint adjustments on the first real
+  build.
+- Nothing runs on a real phone yet: the transport lane already calls `BridgeRuntime.handle` (it is
+  synchronised), so shell commands run off the UI thread.
+- A follow-up should move from the service `newProcess` AIDL to a Shizuku `UserService` when upstream
+  removes `newProcess` from the service as well; the seam is `ShizukuProcess` + two lines in
+  `ShizukuBridge.exec`.
+- `files` has no append/resume; a read above 4 MiB and a write above the transport cap need a
+  follow-up chunked-files protocol if anyone needs them.
+- Spotted while merging, outside this task: `android/ui-core`'s `ActivityLog` and `RelayController`
+  use `java.nio.file.Files.readString`/`writeString`, which the earlier core audit flagged as Java 11
+  APIs that Android O (API 26) may not have. Worth a quick API 26 check by the UI lane; the fix is the
+  same byte-array read/write `JsonFileBotRegistry` uses.
+
+**Blockers:** none. Merged to `main` with `--ff-only` after `:core`, `:relay`, `:android:executor-core`
+and `:android:ui-core` tests passed. No `origin` remote exists, so nothing was pushed (commits only).
 
 ## 2026-11-23 11:45 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: Android foreground service, pairing UI, bot list, permissions and notifications (`android/`),

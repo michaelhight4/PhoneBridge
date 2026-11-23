@@ -58,11 +58,22 @@ class CommandExecutor(
         }
 
         if (command.needsControl && !control.holdsControl(session.botId)) {
-            return Response.failure(
-                request.id,
-                ErrorCode.NOT_CONTROLLER,
-                "${session.name} does not hold control; send request_control first",
-            )
+            // docs/PROTOCOL.md 7: exactly one bot drives; a bot that asked and is waiting is `busy`
+            // with its position, one that never asked is `not_controller`.
+            val position = control.queuePosition(session.botId)
+            return if (position != null) {
+                Response.failure(
+                    request.id,
+                    ErrorCode.BUSY,
+                    "${session.name} is queued at position $position; another bot holds control",
+                )
+            } else {
+                Response.failure(
+                    request.id,
+                    ErrorCode.NOT_CONTROLLER,
+                    "${session.name} does not hold control; send request_control first",
+                )
+            }
         }
 
         val response = try {

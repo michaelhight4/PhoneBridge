@@ -129,6 +129,11 @@ class EndToEndTest {
         assertTrue(alice.request(CommandType.TYPE, TypeArgs(text = "hello world")).ok)
         assertEquals("hello world" to null, phone.device.texts.last())
 
+        // Non-ASCII text survives the JSON envelope, base64url framing and Noise unchanged.
+        val unicode = "héllo ✓ 日本語 🚀"
+        assertTrue(alice.request(CommandType.TYPE, TypeArgs(text = unicode, nodeId = "0.0")).ok)
+        assertEquals(unicode to "0.0", phone.device.texts.last())
+
         assertTrue(alice.request(CommandType.KEY, KeyArgs(KeyName.BACK)).ok)
         assertEquals(dev.phonebridge.executor.KeyCommand.BACK, phone.device.keys.last())
 
@@ -239,12 +244,21 @@ class EndToEndTest {
         assertEquals(false, bobGrant.granted)
         assertEquals(1, bobGrant.position)
 
-        // A queued bot is told its position and is refused when it tries to act.
+        // A queued bot is told its position and is `busy` when it tries to act (PROTOCOL.md 7).
         val positionEvent = bob.awaitEvent("queue_position")
         assertEquals(1, positionEvent.data["position"]?.jsonPrimitive?.content?.toInt())
         val refused = bob.request(CommandType.TAP, TapArgs(x = 1, y = 2))
         assertFalse(refused.ok)
-        assertEquals("not_controller", refused.error?.code)
+        assertEquals("busy", refused.error?.code)
+        assertTrue(refused.error?.message?.contains("position 1") == true)
+        assertTrue(phone.device.taps.isEmpty())
+
+        // A bot that never asked for control is told exactly that.
+        val carol = bot("Carol")
+        pairAndOpen(phone, carol, phone.newOffer(), requested = PermissionLevel.CONTROL)
+        val neverAsked = carol.request(CommandType.TAP, TapArgs(x = 1, y = 2))
+        assertFalse(neverAsked.ok)
+        assertEquals("not_controller", neverAsked.error?.code)
         assertTrue(phone.device.taps.isEmpty())
 
         assertTrue(alice.request(CommandType.TAP, TapArgs(x = 5, y = 6)).ok)

@@ -58,6 +58,23 @@ class CommandExecutorTest {
     }
 
     @Test
+    fun `a queued bot is busy with its position instead of not_controller`() {
+        takeControl(Fixtures.controlBot("holder"))
+        val queued = run(Fixtures.controlBot("waiter"), "request_control")
+        assertEquals(false, queued.result?.get("granted"))
+        assertEquals(1, queued.result?.get("position"))
+
+        val response = executor.execute(
+            Fixtures.controlBot("waiter"),
+            Request(id = "req-2", cmd = "tap", args = mapOf("x" to 1, "y" to 2)),
+        )
+        assertFalse(response.ok)
+        assertEquals(ErrorCode.BUSY, response.error?.code)
+        assertTrue(response.error?.message?.contains("position 1") == true)
+        assertTrue(device.taps.isEmpty())
+    }
+
+    @Test
     fun `accessibility commands fail when the service is off`() {
         device.accessibilityEnabled = false
         takeControl()

@@ -40,10 +40,18 @@ what is left, how to build/test, blockers.
   merged with the Android and relay lanes (kotlinx.serialization Apache-2.0, Bouncy Castle 1.87
   MIT-style, Gson via the relay, AGP build-only); short-code examples in README/SPEC corrected from
   `7K4-Q9M` to a code that passes its own check symbol (`7K4-Q9B`).
-- 108 JVM tests covering every acceptance criterion (JSON round-trips for every message type,
+- 111 JVM tests covering every acceptance criterion (JSON round-trips for every message type,
   handshake + both encryption directions, tampered/replayed ciphertext, short-code check symbol and
   normalisation, link/file round-trip, 10-minute expiry + single use with an injected clock,
-  permission table, arbiter queue/idle/kickAll, chunk/reassemble, relay proof vectors).
+  permission table, arbiter queue/idle/kickAll, chunk/reassemble, relay proof vectors, app messages
+  travelling through a live session).
+- **Android API 26 audit**: `JsonFileBotRegistry` used `Files.readString`/`writeString` (Java 11, not
+  on Android O); it now reads/writes UTF-8 bytes. Everything else is BC lightweight crypto,
+  `java.util.Base64`, `java.nio.file` basics from API 26, or plain Kotlin.
+- **Pairing lifecycle fix**: a pending "Allow this bot?" prompt is no longer dropped when the user
+  creates another offer, and an unanswered prompt expires after ten minutes instead of lingering.
+- **Convenience**: `E2ESession.sealRequest/sealResponse/sealEvent/openAppMessage` carry the typed
+  application messages over a live session, so the transport lanes only move bytes.
 
 **Left / for other lanes**
 

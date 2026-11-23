@@ -167,11 +167,15 @@ class PairingManager(
     }
 
     /** Requests that decrypted but have not been approved or denied yet. */
-    fun pendingApprovals(): List<PendingApproval> = synchronized(lock) { pending.values.toList() }
+    fun pendingApprovals(): List<PendingApproval> = synchronized(lock) {
+        prune()
+        pending.values.toList()
+    }
 
     /** "Allow this bot?": stores the bot and returns the sealed `pair_result`. */
     fun approve(pendingApproval: PendingApproval, level: PermissionLevel = pendingApproval.requestedLevel): PairingAnswer =
         synchronized(lock) {
+            prune()
             val known = pending[pendingApproval.key]
                 ?: throw PairingException(PairingFailure.BAD_REQUEST, "this approval is no longer pending")
             if (known !== pendingApproval && known.request.botPub != pendingApproval.request.botPub) {
@@ -195,6 +199,7 @@ class PairingManager(
 
     /** "Deny": the offer stays burned, so the bot must ask for a brand-new offer. */
     fun deny(pendingApproval: PendingApproval, reason: String = PairingReasons.DENIED): PairingAnswer = synchronized(lock) {
+        prune()
         val known = pending[pendingApproval.key]
             ?: throw PairingException(PairingFailure.BAD_REQUEST, "this approval is no longer pending")
         if (known !== pendingApproval && known.request.botPub != pendingApproval.request.botPub) {
@@ -269,10 +274,12 @@ class PairingManager(
     }
 
     private fun prune(now: Long = clock()) {
-        val dead = offersByCode.values.filter { it.isUsed || isExpired(it, now) }
-        for (state in dead) forget(state)
-        val staleApprovalKeys = pending.values.filter { it.offerCode !in offersByCode }.map { it.key }
-        for (key in staleApprovalKeys) pending.remove(key)
+        // Expired offers stop answering `EXPIRED`/`USED` after their ten minutes.
+        val expired = offersByCode.values.filter { isExpired(it, now) }
+        for (state in expired) forget(state)
+        // A prompt the user never answered is dropped after ten minutes, so it cannot linger forever.
+        val stale = pending.values.filter { now - it.receivedAtMs >= offerTtlMs }
+        for (approval in stale) pending.remove(approval.key)
     }
 
     companion object {

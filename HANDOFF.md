@@ -77,6 +77,10 @@ gradlew.bat :android:app:assembleDebug      # needs an Android SDK + accepted li
   `ShizukuBridge.exec`.
 - `files` has no append/resume; a read above 4 MiB and a write above the transport cap need a
   follow-up chunked-files protocol if anyone needs them.
+- Spotted while merging, outside this task: `android/ui-core`'s `ActivityLog` and `RelayController`
+  use `java.nio.file.Files.readString`/`writeString`, which the earlier core audit flagged as Java 11
+  APIs that Android O (API 26) may not have. Worth a quick API 26 check by the UI lane; the fix is the
+  same byte-array read/write `JsonFileBotRegistry` uses.
 
 **Blockers:** none. Merged to `main` with `--ff-only` after `:core`, `:relay`, `:android:executor-core`
 and `:android:ui-core` tests passed. No `origin` remote exists, so nothing was pushed (commits only).

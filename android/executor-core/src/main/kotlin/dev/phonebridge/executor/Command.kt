@@ -27,11 +27,11 @@ enum class Command(
     REQUEST_CONTROL("request_control", PermissionLevel.CONTROL, needsControl = false, needsAccessibility = false),
     RELEASE_CONTROL("release_control", PermissionLevel.CONTROL, needsControl = false, needsAccessibility = false),
 
-    INSTALL_APK("install_apk", PermissionLevel.FULL, needsControl = false, needsAccessibility = false),
-    SHELL("shell", PermissionLevel.FULL, needsControl = false, needsAccessibility = false),
-    FILES("files", PermissionLevel.FULL, needsControl = false, needsAccessibility = false),
-    SETTINGS("settings", PermissionLevel.FULL, needsControl = false, needsAccessibility = false),
-    RELAY_MOVE("relay_move", PermissionLevel.FULL, needsControl = false, needsAccessibility = false);
+    INSTALL_APK("install_apk", PermissionLevel.FULL, needsControl = true, needsAccessibility = false),
+    SHELL("shell", PermissionLevel.FULL, needsControl = true, needsAccessibility = false),
+    FILES("files", PermissionLevel.FULL, needsControl = true, needsAccessibility = false),
+    SETTINGS("settings", PermissionLevel.FULL, needsControl = true, needsAccessibility = false),
+    RELAY_MOVE("relay_move", PermissionLevel.FULL, needsControl = true, needsAccessibility = false);
 
     companion object {
         private val byWire = entries.associateBy { it.wireName }

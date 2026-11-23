@@ -1,9 +1,9 @@
 # PhoneBridge Protocol (v1)
 
-Status: implemented by `core/` (task 01) on branch `pb/protocol-pairing`. This file is the normative
-description of the bytes on the wire; `core/` is the reference implementation and its tests encode every
-rule below. Changes must be additive (new optional fields, new message types) and must be noted in
-HANDOFF.md.
+Status: implemented by `core/` (task 01) and by the relay (`relay/PROTOCOL-RELAY.md` refines the
+relay-facing messages). This file is the normative description of the bytes on the wire; `core/` is the
+reference implementation and its tests encode every rule below. Changes must be additive (new optional
+fields, new message types) and must be noted in HANDOFF.md.
 
 ## 1. Layers
 
@@ -21,10 +21,11 @@ pasted from other tools still work. JSON is UTF-8. Unknown object keys are alway
 ## 2. Identities
 
 - Every device and every bot has one long-term **X25519 key pair** (32-byte private, 32-byte public).
-- `peer_id` = lowercase base32 (RFC 4648 alphabet `a-z2-7`, no padding) of the **first 16 bytes of
-  `SHA-256(public_key)`**. That is always 26 characters.
+- `peer_id` = **lowercase Crockford base32** (alphabet `0123456789abcdefghjkmnpqrstvwxyz`, i.e. no
+  `i`, `l`, `o`, `u`; no padding) of the **first 16 bytes of `SHA-256(public_key)`**. Always 26
+  characters. The relay uses the same alphabet, so ids match everywhere.
 - User-facing **fingerprint** = the first 8 characters of `peer_id`, uppercased and grouped, e.g.
-  `MMG4-2KLG`. Show fingerprints when pairing and in the bot list; never show the raw key.
+  `CC6W-TAB6`. Show fingerprints when pairing and in the bot list; never show the raw key.
 - Stored identity JSON (this is what `core` writes; the Android app should wrap it with the Keystore):
   ```json
   { "v": 1, "role": "device|bot", "private_key": "<b64url>", "public_key": "<b64url>",
@@ -32,13 +33,14 @@ pasted from other tools still work. JSON is UTF-8. Unknown object keys are alway
   ```
   A stored public key that does not match its private key is rejected on load.
 
-Test vector: public key `000102…1f` gives `peer_id` `mmg42klgyqzwneiskrelxms3j4` and fingerprint
-`MMG4-2KLG`.
+Test vector: public key `000102…1f` gives `peer_id` `cc6wtab6rgspd48jah4bqcjv9w` and fingerprint
+`CC6W-TAB6`.
 
 ## 3. Relay envelopes
 
 ```json
-{ "v": 1, "type": "hello|route|ping|pong|error|relay_moved|pair_lookup|pair_offer",
+{ "v": 1, "type": "challenge|hello|hello_ok|route|ping|pong|error|relay_moved|
+                 pair_store|pair_stored|pair_lookup|pair_offer",
   "from": "<peer_id>", "to": "<peer_id>", "id": "<uuid>", "payload": "<b64url>" }
 ```
 
@@ -46,38 +48,61 @@ All fields are optional except `v` and `type`; each type uses its own subset. `v
 
 | type | direction | fields |
 | --- | --- | --- |
-| `hello` | peer -> relay | `from`, `pub`, `sig`, `role` (`device`/`bot`), `nonce` (echo) |
-| `hello` | relay -> peer (challenge) | `nonce`, `relay_pub` |
+| `challenge` | relay -> peer | `nonce`, `relay_pub`, `relay_id`, `proof`, `expires` |
+| `hello` | peer -> relay | `from`, `pub`, `sig`, `role` (`device`/`bot`), `nonce` (echo), `move_token`? |
+| `hello_ok` | relay -> peer | `to`, `relay_id`, `peer`, `server_time`, `limits` |
 | `route` | relay -> peer | `from`, `to`, `id`, `payload` |
-| `ping` / `pong` | either | `from`, `id` (echoed) |
-| `error` | relay -> peer | `code`, `message`, `pos`, `id` (echo) |
+| `ping` / `pong` | either | `from` / `to`, `id` (echoed) |
+| `error` | relay -> peer | `to`, `id` (echo), `error:{code,message}` |
 | `relay_moved` | relay -> peer | `new_url`, `token`, `expires` (unix seconds) |
+| `pair_store` | device -> relay | `from`, `code`, `offer` (offer JSON object) |
+| `pair_stored` | relay -> device | `to`, `code`, `expires` |
 | `pair_lookup` | bot -> relay | `from`, `code`, `id` |
-| `pair_offer` | relay -> bot | `payload` (base64url of the offer JSON), `id` |
+| `pair_offer` | relay -> bot | `to`, `code`, `offer`, `expires`, `id` |
 
-### 3.1 `hello` and key proof
+### 3.1 `challenge`, `hello` and key proof
 
-The relay cannot sign, and X25519 cannot sign, so proof of key ownership is a DH-MAC challenge:
+The relay cannot sign and X25519 cannot sign, so proof of key ownership is a DH-MAC challenge:
 
-1. On connect the relay sends `{"type":"hello","nonce":"<b64url 16+ random bytes>","relay_pub":"<b64url
-   fresh X25519 public key>"}`. A fresh `relay_pub` per connection is required.
+1. Immediately after the WebSocket upgrade the relay sends
+   ```json
+   { "v":1, "type":"challenge", "nonce":"<b64url 32 random bytes>",
+     "relay_pub":"<b64url fresh X25519 public key>", "relay_id":"<peer_id of relay>",
+     "proof":"dh-hmac-sha256", "expires":1790000030 }
+   ```
+   A fresh `relay_pub` **per connection** is required.
 2. The peer answers
-   `{"type":"hello","from":"<peer_id>","pub":"<b64url own key>","role":"device|bot","nonce":"<echo>","sig":"<b64url proof>"}`
-   with `proof = HMAC-SHA256( mac_key, nonce_bytes || peer_public_key )` where
-   `mac_key = HKDF-SHA256(ikm = DH(peer_private, relay_public), salt = "PhoneBridge/1/hello",
-   info = "PhoneBridge/1/hello-proof", L = 32)`.
-3. The relay computes the same `mac_key` from `DH(relay_private, peer_public)` and compares in constant
-   time. This proves the peer holds the private key for `pub`. Then `from` must equal
-   `peer_id(pub)`, else the relay answers `error {code:"bad_hello"}` and closes.
+   ```json
+   { "v":1, "type":"hello", "from":"<peer_id>", "pub":"<b64url own key>",
+     "role":"device|bot", "nonce":"<echo>", "sig":"<b64url proof>", "move_token":"mv1.…"? }
+   ```
+   with
+   ```
+   shared  = X25519(peer_private, relay_pub)
+   context = "phonebridge/hello/v1|<relay_id>|<b64url(relay_pub)>|<peer_id>|<b64url(nonce)>"
+   sig     = HMAC-SHA256(key = shared, message = context)
+   ```
+   This proves the peer holds the private key for `pub`; it is bound to the relay's ephemeral key, its
+   id and the fresh nonce, so a captured `hello` cannot be replayed on another connection.
+3. The relay verifies with `X25519(relay_private, peer_pub)`, in constant time, and answers
+   ```json
+   { "v":1, "type":"hello_ok", "to":"<peer_id>", "relay_id":"<peer_id>",
+     "peer":"<peer_id>", "server_time":1790000000,
+     "limits":{ "max_envelope_bytes":16777216, "rate_messages":240, "rate_window_ms":1000 } }
+   ```
+   `from` must equal `peer_id(pub)`, otherwise the relay answers
+   `error {code:"unauthorized"}` and closes. `move_token` (when present) is an admission ticket from a
+   `relay_moved` handover and is redeemed once.
 
 ### 3.2 Routing and limits
 
 - `route` is forwarded verbatim to `to` if that peer is connected; otherwise the relay answers
-  `error {code:"peer_offline"}` with the original `id`.
+  `error {code:"peer_offline", id:<envelope id>}`.
 - Relays MUST rate-limit per peer and MUST drop envelopes larger than **16 MiB** (`EnvelopeCodec.MAX_BYTES`,
   measured on the UTF-8 JSON text). Screenshots are chunked (section 8).
-- Relay error codes: `peer_offline`, `rate_limited`, `bad_hello`, `unknown_peer`, `unsupported_version`,
-  `busy` (with `pos` = queue position), `unknown_code` (pair lookup), `internal`.
+- Relay error codes (nested `error.code`): `unauthorized`, `token_used`, `bad_envelope`, `unknown_type`,
+  `already_authenticated`, `peer_offline`, `rate_limited`, `mailbox_full`, `bad_args`, `code_not_found`,
+  `code_expired`, `too_large`, `internal`.
 - `ping`/`pong` keep the socket alive; `pong` echoes the `ping` id.
 - `relay_moved` announces a new relay address. Peers reconnect to `new_url` and present `token` once.
 - Unknown `type` values MUST be ignored by relays and peers, never treated as fatal (forward
@@ -153,10 +178,11 @@ Created on the device; one-time; expires 10 minutes after creation.
 - **Link:** `phonebridge://pair?d=<base64url(UTF-8 offer JSON)>`. Extra query parameters are ignored;
   percent-encoded payload bytes are decoded.
 - **File:** `.pbpair`, UTF-8 offer JSON (indented by `core`); a UTF-8 BOM is tolerated.
-- **Short code:** `7K4-Q9B`: six symbols, display form has a dash after the third. The bot sends
-  `pair_lookup {code}` to a relay URL the user also gives it, and the relay answers `pair_offer` with
-  the offer JSON (or `error {code:"unknown_code"}`). The relay holds an offer for a code for at most
-  10 minutes and releases it once.
+- **Short code:** `7K4-Q9B`: six symbols, display form has a dash after the third. The device stores the
+  offer with `pair_store {code, offer}` and the relay answers `pair_stored {expires}`. The bot sends
+  `pair_lookup {code}` and the relay answers `pair_offer {code, offer, expires}` (or
+  `error {code:"code_not_found"|"code_expired"}`). The relay holds an offer for a code for at most ten
+  minutes and releases it **once**.
   - Alphabet: Crockford base32 `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (no `I`, `L`, `O`, `U`).
   - Input normalisation: case folded, `-`/space/`.`/`_` dropped, `O`→`0`, `I`→`1`, `L`→`1`. `U` is
     invalid.
@@ -165,6 +191,9 @@ Created on the device; one-time; expires 10 minutes after creation.
     value `0x1F`, no reflection, no final XOR; the resulting 5-bit value is the symbol. This catches
     any single wrong symbol.
   - Examples: `7K4Q9` → check `B` → `7K4-Q9B`; `ZZZZZ` → check `Q`; `00000` → check `T`.
+  - **The device owns the check algorithm.** The relay treats the six symbols as an opaque mailbox key
+    and must not reject a code whose check symbol it would compute differently
+    (see `relay/PROTOCOL-RELAY.md`).
 
 ### 5.3 Request and result
 
@@ -196,12 +225,12 @@ pair_result   { "v":1, "ok":false, "reason":"denied", "device_name":"Pixel 9", "
 ### 5.5 Device-side flow
 
 1. `PairingManager.createOffer(relay)` → offer (stored in memory, code and secret mapped).
-2. Bot builds the sealed `pair_request`; relay routes it to the device.
+2. Bot builds the sealed `pair_request`; the relay routes it to the device.
 3. `PairingManager.accept(code|offer, sealed)` decrypts, validates, **burns the offer**, and returns a
    `PendingApproval` (name, fingerprint, requested level).
 4. Device UI shows "Allow this bot?". `approve(level)` stores a `BotRecord` in the registry and returns
    the sealed `pair_result`; `deny(reason)` answers without storing anything.
-5. After approval, the bot opens Noise `XX` with the device (not the relay), and both sides pin the
+5. After approval the bot opens Noise `XX` with the device (not the relay), and both sides pin the
    other's static key from the pairing record.
 
 `revoke(botId)` (unpair) only affects that bot. Disabling a bot keeps its keys but refuses new sessions.
@@ -231,7 +260,7 @@ Permission levels are ordered **View < Control < Full**. `Commands.requiredLevel
 | `ui_tree` | view | `{max_depth?, visible_only?}` | `{root: Node}` |
 | `notifications` | view | `{since?}` | `{items:[{pkg,title,text,time}]}` |
 | `tap` | control | `{x,y}` or `{node_id}` | `{}` |
-| `long_press` | control | `{x,y,ms?}` | `{}` |
+| `long_press` | control | `{x,y,ms?}` or `{node_id, ms?}` | `{}` |
 | `swipe` | control | `{x1,y1,x2,y2,ms?}` | `{}` |
 | `type` | control | `{text, node_id?}` | `{}` |
 | `key` | control | `{key:"back\|home\|recents\|notifications\|quick_settings\|lock\|enter\|power_dialog"}` | `{}` |
@@ -248,7 +277,8 @@ Argument rules enforced by `core` (violations are `bad_args`):
 
 - `screenshot.format` is `png` or `jpeg`; `quality` 1..100; `max_width` 16..16384.
 - `ui_tree.max_depth` 1..1000; `visible_only` defaults to `true`.
-- `tap` takes `x`+`y` **or** `node_id`, never both, never neither.
+- `tap` takes `x`+`y` **or** `node_id`, never both, never neither; `long_press` follows the same rule
+  plus an optional `ms`.
 - `long_press.ms` and `swipe.ms` 1..60000; `swipe` needs two different points.
 - `open_app` takes exactly one of `package`/`label`; `install_apk` exactly one of `url`/`data_b64`
   (https URLs only, and an inline APK needs `name`).
@@ -262,8 +292,8 @@ Results:
 - `screenshot` inline: `{mime:"image/png", width, height, data_b64:"<b64url of the image>"}`.
 - `screenshot` chunked: `{mime, width, height, chunked:true, chunk_id, total, size, sha256}`; the pixels
   arrive as `chunk` events (section 8).
-- `ui_tree`: `Node = {id, cls, text, desc, res_id, bounds:[l,t,r,b], clickable, focusable, editable,
-  children:[]}`. `bounds` always has four integers.
+- `ui_tree`: `Node = {id, cls, text, desc, res_id, bounds:[l,t,r,b], visible?, clickable, focusable,
+  editable, children:[]}`. `bounds` always has four integers; `visible` is optional.
 - `notifications`: items carry `pkg`, `title`, `text`, `time` (epoch millis).
 - `request_control`: `{granted:true}` or `{granted:false, position:n}`; a queued bot also gets a
   `queue_position` event when its position changes.
@@ -327,7 +357,7 @@ A payload larger than what fits comfortably in one message is split into `chunk`
 ## 9. Versioning
 
 - `v` is `1` everywhere. A peer that sees a higher version may still try to parse (unknown fields are
-  ignored); an empty `unknown_cmd`-style failure is better than a crash.
+  ignored); an `unknown_cmd` failure is better than a crash.
 - Never renumber or reuse a field name with different semantics. Add optional fields instead.
 - New command names must be added to the permission table; unknown names are `unknown_cmd`.
 - New envelope types must be ignorable (section 3.2) and documented here.

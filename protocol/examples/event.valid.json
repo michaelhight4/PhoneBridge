@@ -1,0 +1,6 @@
+{
+  "event": "queue_position",
+  "data": {
+    "position": 2
+  }
+}

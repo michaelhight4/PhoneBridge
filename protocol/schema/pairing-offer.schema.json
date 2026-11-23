@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/pairing-offer.schema.json",
+  "title": "PairingOffer",
+  "description": "One-time pairing offer created on the device; expires 10 minutes after creation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "relay", "device_id", "device_pub", "secret", "code", "exp"],
+  "properties": {
+    "v": { "const": 1 },
+    "relay": { "type": "string", "pattern": "^wss?://" },
+    "device_id": {
+      "type": "string",
+      "pattern": "^[a-z2-7]{26}$"
+    },
+    "device_pub": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" },
+    "secret": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" },
+    "code": { "type": "string", "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{3}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{3}$" },
+    "exp": { "type": "integer", "minimum": 0 }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/commands/shell.schema.json",
+  "title": "shell command",
+  "description": "Args and result for shell (level: Full).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "args",
+    "result"
+  ],
+  "properties": {
+    "args": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exit",
+        "stdout",
+        "stderr"
+      ],
+      "properties": {
+        "exit": {
+          "type": "integer"
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {}
+}

@@ -12,8 +12,8 @@ import kotlin.test.assertTrue
 class IdentityTest {
     /** Fixed 32-byte key 0x00..0x1f; vector computed independently of this library. */
     private val vectorKey = ByteArray(32) { it.toByte() }
-    private val vectorPeerId = "mmg42klgyqzwneiskrelxms3j4"
-    private val vectorFingerprint = "MMG4-2KLG"
+    private val vectorPeerId = "cc6wtab6rgspd48jah4bqcjv9w"
+    private val vectorFingerprint = "CC6W-TAB6"
 
     @Test
     fun peerIdAndFingerprintMatchTheProtocolVector() {
@@ -24,9 +24,9 @@ class IdentityTest {
         assertTrue(PeerIds.isValidPeerId(vectorPeerId))
         assertFalse(PeerIds.isValidPeerId(vectorPeerId.uppercase()))
         assertFalse(PeerIds.isValidPeerId(vectorPeerId.dropLast(1)))
-        assertTrue(PeerIds.isValidFingerprint("mmg4-2klg"))
-        assertTrue(PeerIds.isValidFingerprint("MMG42KLG"))
-        assertFalse(PeerIds.isValidFingerprint("MMG4-2KL"))
+        assertTrue(PeerIds.isValidFingerprint("cc6w-tab6"))
+        assertTrue(PeerIds.isValidFingerprint("CC6WTAB6"))
+        assertFalse(PeerIds.isValidFingerprint("CC6W-TAB"))
     }
 
     @Test
@@ -36,7 +36,7 @@ class IdentityTest {
         assertEquals(32, identity.publicKey.size)
         assertEquals(PeerIds.peerId(identity.publicKey), identity.peerId)
         assertEquals(PeerIds.fingerprint(identity.publicKey), identity.fingerprint)
-        assertTrue(identity.fingerprint.matches(Regex("[A-Z2-7]{4}-[A-Z2-7]{4}")))
+        assertTrue(identity.fingerprint.matches(Regex("[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}")))
         assertEquals("Pixel", identity.name)
     }
 

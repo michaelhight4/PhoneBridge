@@ -206,6 +206,7 @@ internal class RelayServer private constructor(
         private var authenticated = false
 
         private var preAuthMessages = 0
+        private var challengeCount = 1
         private var rateViolations = 0
         private var lastRateErrorAt = 0L
 
@@ -317,7 +318,16 @@ internal class RelayServer private constructor(
                 return rejectHello("unauthorized", "peer id does not match the public key")
             }
             val helloNonceB64 = Json.string(obj, "nonce")
-                ?: return rejectHello("unauthorized", "hello must echo the challenge nonce")
+            if (helloNonceB64 == null) {
+                // docs/PROTOCOL.md has the relay challenge in the hello reply. A peer that sends
+                // hello before reading the challenge gets a fresh challenge back, not a disconnect.
+                if (challengeCount < 3) {
+                    challengeCount++
+                    sendChallenge()
+                    return true
+                }
+                return rejectHello("unauthorized", "hello must carry the challenge nonce")
+            }
             val helloNonce = Codec.b64urlDecode(helloNonceB64)
             if (helloNonce == null || !Codec.constantTimeEquals(helloNonce, nonce)) {
                 return rejectHello("unauthorized", "hello nonce does not match the challenge")

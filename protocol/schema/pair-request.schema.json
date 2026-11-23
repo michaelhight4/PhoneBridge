@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/pair-request.schema.json",
+  "title": "PairRequest",
+  "description": "Bot -> device pairing request, sent encrypted with a key derived from the pairing secret.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bot_name", "bot_pub", "requested_level"],
+  "properties": {
+    "bot_name": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "bot_pub": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" },
+    "requested_level": { "enum": ["view", "control", "full"] }
+  }
+}

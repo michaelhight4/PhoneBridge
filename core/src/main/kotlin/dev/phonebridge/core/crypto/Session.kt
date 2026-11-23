@@ -2,6 +2,11 @@ package dev.phonebridge.core.crypto
 
 import dev.phonebridge.core.CryptoException
 import dev.phonebridge.core.identity.PeerIds
+import dev.phonebridge.core.model.AppEvent
+import dev.phonebridge.core.model.AppMessage
+import dev.phonebridge.core.model.AppMessages
+import dev.phonebridge.core.model.AppRequest
+import dev.phonebridge.core.model.AppResponse
 
 /**
  * One-byte tag in front of every end-to-end frame, so a peer can tell handshake traffic from transport
@@ -131,6 +136,16 @@ class E2ESession(
     fun sealText(text: String): ByteArray = seal(text.toByteArray(Charsets.UTF_8))
 
     fun openText(frame: ByteArray): String = String(open(frame), Charsets.UTF_8)
+
+    /** Seals one application message (request/response/event) as a transport frame. */
+    fun sealRequest(request: AppRequest): ByteArray = seal(AppMessages.encodeRequest(request).toByteArray(Charsets.UTF_8))
+
+    fun sealResponse(response: AppResponse): ByteArray = seal(AppMessages.encodeResponse(response).toByteArray(Charsets.UTF_8))
+
+    fun sealEvent(event: AppEvent): ByteArray = seal(AppMessages.encodeEvent(event).toByteArray(Charsets.UTF_8))
+
+    /** Opens a transport frame and parses the application message inside it. */
+    fun openAppMessage(frame: ByteArray): AppMessage = AppMessages.parse(openText(frame))
 
     private fun requireChannel(): SecureChannel =
         channel ?: throw CryptoException("handshake is not complete yet")

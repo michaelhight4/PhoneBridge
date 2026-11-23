@@ -1,0 +1,14 @@
+{
+  "device": {
+    "model": "Pixel"
+  },
+  "battery": {
+    "level": 80
+  },
+  "screen_on": true,
+  "controller": null,
+  "queue": [],
+  "shizuku": {
+    "available": false
+  }
+}

@@ -28,23 +28,38 @@ class ProtocolSerializationTest {
 
     @Test
     fun everyEnvelopeTypeRoundTrips() {
+        val offerJson = PbJson.encodeToJsonElement(PairingOffer.serializer(), sampleOffer()).jsonObject
         val envelopes = listOf(
             RelayEnvelope.hello(deviceId, device.publicKeyBase64, PeerRole.DEVICE, proofB64 = "cHJvb2Y", nonceB64 = "bm9uY2U"),
-            RelayEnvelope.helloChallenge("bm9uY2U", B64Url.encode(ByteArray(32) { 1 })),
+            RelayEnvelope.challenge("bm9uY2U", B64Url.encode(ByteArray(32) { 1 }), relayId = botId, expires = 1_700_000_030L),
+            RelayEnvelope.helloOk(deviceId, relayId = botId, serverTime = 1_700_000_000L),
             RelayEnvelope.route(deviceId, botId, byteArrayOf(1, 2, 3)),
             RelayEnvelope.ping(deviceId),
             RelayEnvelope.pong(deviceId, "id-1"),
-            RelayEnvelope.error("peer_offline", "bot is not connected", pos = 2),
+            RelayEnvelope.error("peer_offline", "bot is not connected", to = deviceId, id = "id-2"),
             RelayEnvelope.relayMoved("wss://new.example:8443", "token-1", 1_700_000_000L),
+            RelayEnvelope.pairStore(deviceId, "7K4-Q9B", offerJson),
+            RelayEnvelope.pairStored(deviceId, "7K4-Q9B", 1_700_000_600L),
             RelayEnvelope.pairLookup(botId, "7K4-Q9B"),
-            RelayEnvelope.pairOffer("""{"v":1}""".toByteArray()),
+            RelayEnvelope.pairOffer(botId, "7K4-Q9B", offerJson, 1_700_000_600L),
         )
         for (envelope in envelopes) {
             val decoded = roundTrip(RelayEnvelope.serializer(), envelope)
             assertEquals(envelope, decoded)
             assertEquals(envelope.type, decoded.type)
+            assertTrue(decoded.isKnownType)
         }
     }
+
+    private fun sampleOffer(): PairingOffer = PairingOffer(
+        relay = "wss://relay.example:8443",
+        deviceId = deviceId,
+        devicePub = device.publicKeyBase64,
+        secret = B64Url.encode(ByteArray(32) { it.toByte() }),
+        code = "7K4-Q9B",
+        exp = 1_700_000_600L,
+        deviceName = "Pixel 9",
+    )
 
     @Test
     fun routeEnvelopeMatchesTheDocumentedShape() {
@@ -59,11 +74,48 @@ class ProtocolSerializationTest {
 
     @Test
     fun helloEnvelopeUsesTheDocumentedRoleAndKeyFields() {
-        val json = EnvelopeCodec.encode(RelayEnvelope.hello(deviceId, device.publicKeyBase64, PeerRole.DEVICE))
+        val json = EnvelopeCodec.encode(
+            RelayEnvelope.hello(
+                deviceId,
+                device.publicKeyBase64,
+                PeerRole.DEVICE,
+                proofB64 = "cHJvb2Y",
+                nonceB64 = "bm9uY2U",
+            ),
+        )
         assertTrue(json.contains("\"type\":\"hello\""))
         assertTrue(json.contains("\"role\":\"device\""))
         assertTrue(json.contains("\"pub\":\"${device.publicKeyBase64}\""))
+        assertTrue(json.contains("\"sig\":\"cHJvb2Y\""))
+        assertTrue(json.contains("\"nonce\":\"bm9uY2U\""))
         assertTrue(json.contains("\"v\":1"))
+    }
+
+    @Test
+    fun errorEnvelopesCarryANestedErrorObject() {
+        val json = EnvelopeCodec.encode(RelayEnvelope.error("peer_offline", "not connected", to = deviceId, id = "x"))
+        assertTrue(json.contains("\"error\":{\"code\":\"peer_offline\",\"message\":\"not connected\"}"), json)
+        // The code lives inside the error object, not at the top level.
+        assertTrue(json.indexOf("\"error\"") < json.indexOf("\"code\""), json)
+        val decoded = EnvelopeCodec.decode(json)
+        assertEquals("peer_offline", decoded.error?.code)
+        assertEquals("not connected", decoded.error?.message)
+    }
+
+    @Test
+    fun shortCodeMailboxCarriesTheOfferObject() {
+        val offer = sampleOffer()
+        val offerJson = PbJson.encodeToJsonElement(PairingOffer.serializer(), offer).jsonObject
+        val store = RelayEnvelope.pairStore(deviceId, offer.code, offerJson)
+        assertEquals(offer, EnvelopeCodec.decode(EnvelopeCodec.encode(store)).offerAsPairingOffer())
+
+        val lookup = RelayEnvelope.pairLookup(botId, offer.code)
+        assertTrue(EnvelopeCodec.encode(lookup).contains("\"type\":\"pair_lookup\""))
+        assertEquals("7K4-Q9B", lookup.code)
+
+        val offered = RelayEnvelope.pairOffer(botId, offer.code, offerJson, offer.exp)
+        assertEquals(offer.exp, offered.expires)
+        assertEquals(offer, EnvelopeCodec.decode(EnvelopeCodec.encode(offered)).offerAsPairingOffer())
     }
 
     @Test
@@ -249,7 +301,7 @@ class ProtocolSerializationTest {
                 focusable = true,
                 editable = false,
                 children = listOf(
-                    UiNode(id = "child", cls = "Button", text = "OK", bounds = listOf(10, 10, 200, 100), clickable = true),
+                    UiNode(id = "child", cls = "Button", text = "OK", bounds = listOf(10, 10, 200, 100), visible = true, clickable = true),
                 ),
             ),
         ),

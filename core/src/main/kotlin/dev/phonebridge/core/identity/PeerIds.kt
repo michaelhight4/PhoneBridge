@@ -4,9 +4,11 @@ import dev.phonebridge.core.crypto.Primitives
 import dev.phonebridge.core.util.Base32
 
 /**
- * `peer_id` and fingerprint exactly as docs/PROTOCOL.md defines them:
+ * `peer_id` and fingerprint exactly as docs/PROTOCOL.md defines them (and as the relay implements
+ * them):
  *
- * - `peer_id` = lowercase base32 (no padding) of the first 16 bytes of `SHA-256(public_key)`; 26 chars.
+ * - `peer_id` = lowercase Crockford base32 (no padding) of the first 16 bytes of `SHA-256(public_key)`;
+ *   26 characters from the alphabet `0-9a-z` minus `i`, `l`, `o`, `u`.
  * - fingerprint = the first 8 `peer_id` characters, uppercased and grouped `ABCD-EFGH`.
  */
 object PeerIds {
@@ -27,15 +29,14 @@ object PeerIds {
     /** Uppercases and inserts the display dash: `abcdefgh` becomes `ABCD-EFGH`. */
     fun group(text: String): String = text.uppercase().chunked(4).joinToString("-")
 
-    /** True for the canonical lowercase 26-character peer id alphabet (`a-z`, `2-7`). */
+    /** True for the canonical lowercase 26-character Crockford peer id alphabet. */
     fun isValidPeerId(peerId: String): Boolean =
-        peerId.length == PEER_ID_CHARS && peerId.all { it in 'a'..'z' || it in '2'..'7' }
+        peerId.length == PEER_ID_CHARS && peerId.all { it in Base32.ALPHABET.lowercase() }
 
     /** True for a fingerprint with or without the dash, any case. */
     fun isValidFingerprint(text: String): Boolean {
         val bare = text.replace("-", "").replace(" ", "")
         if (bare.length != FINGERPRINT_CHARS) return false
-        val lower = bare.lowercase()
-        return lower.all { it in 'a'..'z' || it in '2'..'7' }
+        return bare.all { it.uppercaseChar() in Base32.ALPHABET }
     }
 }

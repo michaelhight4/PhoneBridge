@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/commands/ui_tree.schema.json",
+  "title": "ui_tree command",
+  "description": "Args and result for ui_tree (level: View).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "args",
+    "result"
+  ],
+  "properties": {
+    "args": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visible_only": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root"
+      ],
+      "properties": {
+        "root": {
+          "$ref": "#/$defs/node"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "cls",
+        "text",
+        "desc",
+        "res_id",
+        "bounds",
+        "clickable",
+        "focusable",
+        "editable",
+        "children"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "cls": {
+          "type": "string"
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "desc": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "res_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bounds": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "clickable": {
+          "type": "boolean"
+        },
+        "focusable": {
+          "type": "boolean"
+        },
+        "editable": {
+          "type": "boolean"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        }
+      }
+    }
+  }
+}

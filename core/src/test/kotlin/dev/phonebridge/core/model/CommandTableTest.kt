@@ -142,6 +142,19 @@ class CommandTableTest {
             Commands.decodeArgs(CommandType.TAP, PbJson.parseToJsonElement("""{"x":10,"y":20}""")),
         )
         assertEquals(
+            LongPressArgs(nodeId = "0.1", ms = 500),
+            Commands.decodeArgs(CommandType.LONG_PRESS, PbJson.parseToJsonElement("""{"node_id":"0.1","ms":500}""")),
+        )
+        assertFailsWith<BadArgsException> {
+            Commands.decodeArgs(
+                CommandType.LONG_PRESS,
+                PbJson.parseToJsonElement("""{"x":1,"y":2,"node_id":"0.1"}"""),
+            )
+        }
+        assertFailsWith<BadArgsException> {
+            Commands.decodeArgs(CommandType.LONG_PRESS, PbJson.parseToJsonElement("{}"))
+        }
+        assertEquals(
             KeyArgs(KeyName.BACK),
             Commands.decodeArgs(CommandType.KEY, PbJson.parseToJsonElement("""{"key":"back"}""")),
         )

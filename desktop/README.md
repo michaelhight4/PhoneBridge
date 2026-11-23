@@ -86,10 +86,10 @@ saying so.
 
 ### Shell, files and installs (Full)
 
-- `shell {command, timeout_ms?}` runs **PowerShell** (`-NoProfile -NonInteractive`) with console output
-  forced to UTF-8; `timeout_ms` defaults to 60 s and is capped at one hour. The result is the documented
-  `{exit, stdout, stderr}`; a command killed at the deadline answers `timeout`. stdout is capped at
-  8 MiB and stderr at 256 KiB.
+- `shell {command, timeout_ms?, shell?}` runs **PowerShell** (`-NoProfile -NonInteractive`) by default;
+  pass `"shell":"cmd"` for `cmd.exe`. Console output is forced to UTF-8; `timeout_ms` defaults to 60 s
+  and is capped at one hour. The result is the documented `{exit, stdout, stderr}`; a command killed at
+  the deadline answers `timeout`. stdout is capped at 8 MiB and stderr at 256 KiB.
 - `files {op, path, data_b64?}` lists (max 2000 entries, non-recursive), reads (max 4 MiB), writes
   (max 8 MiB, creates parent folders) and deletes. Relative paths resolve against the user's home
   directory. The result shapes are `core`'s `FilesResult`.

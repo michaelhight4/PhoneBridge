@@ -163,7 +163,11 @@ class DesktopExecutor(
 
                 CommandType.SHELL -> {
                     val shell = args as ShellArgs
-                    val output = device.shell(shell.command, shell.timeoutMs ?: DEFAULT_SHELL_TIMEOUT_MS, ShellKind.POWERSHELL)
+                    // Desktop extension: `shell:"powershell"|"cmd"` chooses the interpreter (default
+                    // PowerShell). Unknown keys are ignored by core, so this stays additive.
+                    val kind = ShellKind.parse(JsonArgs(request.args).string("shell"))
+                        ?: throw BadArgsException("shell must be powershell or cmd")
+                    val output = device.shell(shell.command, shell.timeoutMs ?: DEFAULT_SHELL_TIMEOUT_MS, kind)
                     if (output.timedOut) {
                         failure(
                             request.id,

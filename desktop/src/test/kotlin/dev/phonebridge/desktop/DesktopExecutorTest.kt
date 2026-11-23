@@ -206,6 +206,13 @@ class DesktopExecutorTest {
         assertEquals("hello", ok.result!!["stdout"]!!.jsonPrimitive.content)
         assertEquals(Triple("dir", 60_000L, ShellKind.POWERSHELL), device.shells.single())
 
+        val cmd = run(request("shell", args("""{"command":"dir","shell":"cmd"}""")), fullBot)
+        assertTrue(cmd.ok)
+        assertEquals(Triple("dir", 60_000L, ShellKind.CMD), device.shells.last())
+
+        val badShell = run(request("shell", args("""{"command":"dir","shell":"bash"}""")), fullBot)
+        assertEquals("bad_args", badShell.error?.code)
+
         device.shellOutput = ShellOutput(exit = -1, stdout = "", stderr = "", timedOut = true)
         val timeout = run(request("shell", args("""{"command":"pause","timeout_ms":500}""")), fullBot)
         assertFalse(timeout.ok)

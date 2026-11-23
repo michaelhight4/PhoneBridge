@@ -184,6 +184,44 @@ class RelayAuthTest {
     }
 
     @Test
+    fun `a hello sent before the challenge is answered with the challenge`() {
+        val relay = TestSupport.testRelay()
+        try {
+            RawPeer(PeerKeyPair.generate(), relay.url).use { peer ->
+                peer.open(readChallenge = false)
+                // Exactly what a peer following docs/PROTOCOL.md literally would send first.
+                peer.send(
+                    Json.obj(
+                        "v" to 1,
+                        "type" to "hello",
+                        "from" to peer.identity.peerId,
+                        "pub" to Codec.b64url(peer.identity.publicKey),
+                        "role" to "bot"
+                    )
+                )
+                val challenge = assertNotNull(peer.readJson())
+                assertEquals("challenge", Json.string(challenge, "type"))
+                peer.adoptChallenge(challenge)
+                peer.helloSigned()
+
+                // The relay also answered the first, nonce-less hello with this challenge, so skip
+                // any extra challenge frames until the hello_ok arrives.
+                var reply: JsonObject? = null
+                for (attempt in 0 until 3) {
+                    val next = peer.readJson() ?: break
+                    if (Json.string(next, "type") == "hello_ok") {
+                        reply = next
+                        break
+                    }
+                }
+                assertEquals("hello_ok", Json.string(assertNotNull(reply), "type"))
+            }
+        } finally {
+            relay.stop()
+        }
+    }
+
+    @Test
     fun `an authenticated peer cannot spoof another sender`() {
         val relay = TestSupport.testRelay()
         val bot = TestSupport.client(relay)

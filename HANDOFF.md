@@ -3,7 +3,6 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
-<<<<<<< HEAD
 ## 2026-11-23 11:26 — ds1 (deepseek-flash / DeepSeek V4.1 Flash) — task 01: protocol, crypto, pairing (`core/`)
 
 **Done** (branch `pb/protocol-pairing`, all in `core/` plus `docs/PROTOCOL.md`, `docs/THIRD_PARTY.md`):
@@ -67,10 +66,10 @@ what is left, how to build/test, blockers.
 **How to test**: `gradlew.bat :core:test` (JDK 25 on PATH, no Android SDK needed).
 
 **Blockers**: none. No `origin` remote exists yet, so nothing was pushed (commits only).
-=======
-## 2026-11-23 11:14–12:00 — ds2 / deepseek/deepseek-flash — task 02 relay server (`:relay`)
 
-**Done (acceptance criteria met, `:relay:test` green: 43 tests)**
+## 2026-11-23 11:14–11:35 — ds2 / deepseek/deepseek-flash — task 02 relay server (`:relay`)
+
+**Done (acceptance criteria met, `:relay:test` green: 44 tests)**
 - Embeddable relay API in `dev.phonebridge.relay`: `Relay.start(RelayConfig): RelayHandle`, `stop()`,
   `moveTo(newUrl)`, `stats()`, `peers()`; per-connection `RelayClient` for devices, bots and tests.
 - Transport: hand-written RFC 6455 server + client (text frames, ping/pong, close, masking), so the
@@ -122,16 +121,15 @@ what is left, how to build/test, blockers.
 
 **How to test**
 ```bash
-gradlew.bat :relay:test                                        # 43 in-process tests
+gradlew.bat :relay:test                                        # 44 in-process tests
 gradlew.bat :relay:run --args="--port 8443"                    # standalone, wss + self-signed cert
 gradlew.bat :relay:shadowJar                                   # single-file jar for a VPS
 java -jar relay/build/libs/phonebridge-relay-all.jar --help
 ```
 Tests are on loopback with port 0, so they do not need the SDK, a network, or free fixed ports.
 
-**Blockers:** none. No `origin` remote exists, so commits are local only (no push); nothing was merged
-while blocked.
->>>>>>> main
+**Blockers:** none. Merged to `main` with `--ff-only` after `:relay:test` and the repo-wide `test`
+task were green. No `origin` remote exists, so there is nothing to push yet.
 
 ## 2026-11-23 11:30 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: Android AccessibilityService + command executor (`android/` only), branch

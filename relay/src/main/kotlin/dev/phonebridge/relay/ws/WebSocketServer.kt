@@ -33,6 +33,7 @@ class WebSocketServer(
     private val maxMessageBytes: Int,
     private val idleTimeoutMs: Int = 120_000,
     private val handshakeTimeoutMs: Int = 15_000,
+    private val maxConnections: Int = 512,
     private val log: (String) -> Unit = {}
 ) {
     private val running = AtomicBoolean(false)
@@ -137,6 +138,11 @@ class WebSocketServer(
             val key = request.headers["sec-websocket-key"]
             if (key.isNullOrBlank()) {
                 respondStatus(output, 400, "Bad Request", "missing Sec-WebSocket-Key")
+                socket.close()
+                return
+            }
+            if (connections.size >= maxConnections) {
+                respondStatus(output, 503, "Service Unavailable", "the relay is at capacity")
                 socket.close()
                 return
             }

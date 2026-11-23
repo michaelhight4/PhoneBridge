@@ -47,6 +47,8 @@ data class RelayConfig(
     val helloTimeoutMs: Int = 30_000,
     /** Idle read timeout after which the relay sends a WebSocket ping. */
     val idleTimeoutMs: Int = 120_000,
+    /** Maximum number of open WebSocket connections. */
+    val maxConnections: Int = 512,
     /**
      * Secret shared with the next relay for `relay_move`. Hex or base64url (or any text, hashed as
      * given). Without it the relay refuses to hand over, and refuses incoming move tokens.
@@ -64,6 +66,7 @@ data class RelayConfig(
         }
         require(pairMailboxTtlMs > 0) { "pairMailboxTtlMs must be positive" }
         require(helloTimeoutMs > 0) { "helloTimeoutMs must be positive" }
+        require(maxConnections > 0) { "maxConnections must be positive" }
         if (tls == null && !insecureDev && !isLoopbackAddress(bindAddress)) {
             throw IllegalArgumentException(
                 "plain ws:// is only allowed on loopback; enable TLS or pass insecureDev = true " +

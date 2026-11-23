@@ -99,6 +99,7 @@ internal class RelayServer private constructor(
         sslContext = material?.sslContext,
         maxMessageBytes = config.maxEnvelopeBytes,
         idleTimeoutMs = config.idleTimeoutMs,
+        maxConnections = config.maxConnections,
         log = config.log
     )
 

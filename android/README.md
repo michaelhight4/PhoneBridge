@@ -41,8 +41,8 @@ included.
   high-priority full-screen "Allow this bot?" notification for pending pairings,
 - serves `relay_move` (`{to:"this"}` or a `wss://` URL) from the Full-level command handler.
 
-The relay module keeps its own envelope and key-pair types, so these are converted once at the
-service boundary. Its `peer_id`/fingerprint encoding is asserted against `:core` in `:relay:test`.
+The relay and the app share `:core`'s envelope, identity and `HelloAuth` types, so there is no type
+conversion at the service boundary. The relay client's `payload` stays opaque base64url ciphertext.
 
 ## Device control (this build)
 

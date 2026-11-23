@@ -66,8 +66,8 @@ branch `pb/android-service-pairing-ui`.
 ```
 gradlew.bat :android:ui-core:test         # 39 view-model/state tests (acceptance)
 gradlew.bat :android:executor-core:test   # 75 executor tests, incl. kickAll
-gradlew.bat :core:test                    # 104 core tests
-gradlew.bat :relay:test                   # 44 relay tests, incl. peer-id compatibility
+gradlew.bat :core:test                    # 111 core tests
+gradlew.bat :relay:test                   # 33 relay tests on the shared :core types
 ```
 The app module is not included without an SDK, so `assembleDebug` was not run.
 
@@ -86,6 +86,10 @@ The app module is not included without an SDK, so `assembleDebug` was not run.
   end-to-end; a future task could move it behind a plain-Kotlin seam and add a fake relay test.
 - Pairing file export uses the system share sheet through `PairingFileProvider`; there is no
   "save to Files" button beyond what the share sheet offers.
+- `relay_move {to:"this"}` starts the embedded relay and re-points this phone's own client. A full
+  live hand-over of a remote relay needs the old relay's `moveTo`/token path; the UI does not exercise
+  that yet. Android 14+ may also refuse the full-screen pairing intent unless the user grants that
+  permission; the high-priority notification still works.
 
 **Blockers**
 - Android SDK (and licence acceptance) to build the APK — user decision, not installed by this bot.

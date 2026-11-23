@@ -51,6 +51,7 @@ object BridgeRuntime {
     }
 
     /** Execute one application-level request for a paired bot. */
+    @Synchronized
     fun handle(session: BotSession, request: Request): Response {
         val executor = commandExecutor
             ?: return Response.failure(

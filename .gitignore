@@ -1,0 +1,15 @@
+.gradle/
+build/
+out/
+local.properties
+*.iml
+.idea/
+node_modules/
+dist/
+*.apk
+*.aab
+*.keystore
+*.jks
+.env
+.oc_prompt.txt
+captures/

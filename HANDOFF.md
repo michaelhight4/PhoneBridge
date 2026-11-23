@@ -3,6 +3,70 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 11:26 — ds1 (deepseek-flash / DeepSeek V4.1 Flash) — task 01: protocol, crypto, pairing (`core/`)
+
+**Done** (branch `pb/protocol-pairing`, all in `core/` plus `docs/PROTOCOL.md`, `docs/THIRD_PARTY.md`):
+
+- **Message model** for everything in PROTOCOL.md: `RelayEnvelope` (+hello/route/ping/pong/error/
+  relay_moved/pair_lookup/pair_offer), `PairingOffer`/`PairRequest`/`PairResult`, typed app
+  `AppRequest`/`AppResponse`/`AppEvent`, all 17 commands with typed args, typed results, error codes,
+  `PermissionLevel` (VIEW < CONTROL < FULL) and the `CommandType`/`Commands.requiredLevel` table.
+  kotlinx.serialization plugin added to `core/build.gradle.kts`; one shared `PbJson` config.
+- **Identities**: X25519 key pairs, `peer_id` = lowercase base32(SHA-256(pub)[0..16)) = 26 chars,
+  fingerprint = first 8 chars as `ABCD-EFGH`; stored identity JSON with key/public mismatch rejection.
+- **E2E**: real Noise `XX` (`Noise_XX_25519_ChaChaPoly_SHA256`, rev 34) implemented on Bouncy Castle
+  primitives so it runs on Android API 26+: per-direction keys, little-endian 64-bit counters, strict
+  in-order processing (replays/reordering/tampering rejected without advancing the counter), prologue
+  `PhoneBridge/1/noise-xx`, 1-byte frame tags (0x01 handshake / 0x02 transport), key pinning helper.
+- **Pairing**: 32-byte one-time secret, 10-minute expiry, burn-on-use/burn-on-deny, `PairingManager`
+  (`createOffer`/`accept` -> `PendingApproval`/`approve(level)`/`deny`), sealed request/result with
+  HKDF-SHA256 + ChaCha20-Poly1305, direction + device-key AAD, bot-side `PairingClient`, short code
+  `7K4-Q9B` (Crockford base32, 5 data + CRC-5 check symbol, O→0 I/L→1 normalisation),
+  `phonebridge://pair?d=` links, `.pbpair` files, QR payload = link, `BotRegistry` with in-memory and
+  atomic JSON-file implementations.
+- **Control arbiter**: one controller, FIFO queue with positions, 120 s idle auto-release with
+  promotion, `touch`, `kickAll`, state callback.
+- **Chunking**: 256 KiB chunks (1 MiB ceiling), 64 MiB payload cap, `chunk` events with whole-payload
+  SHA-256, out-of-order reassembly, duplicate/gap/oversize rejection; sizes proven well under the
+  8 MiB transport and 16 MiB relay caps.
+- **Relay hello proof**: documented DH-MAC challenge (`relay_pub` + `nonce`) so a peer proves ownership
+  of its X25519 key without signatures; `HelloAuth` implements both sides.
+- **Relay interop**: core now matches the relay lane's merged wire contract exactly — Crockford base32
+  `peer_id`, the `dh-hmac-sha256` `challenge`/`hello` proof over
+  `phonebridge/hello/v1|<relay_id>|<relay_pub>|<peer_id>|<nonce>`, `hello_ok` with limits,
+  `pair_store`/`pair_stored`/`pair_lookup`/`pair_offer` carrying the offer as a JSON object, and errors
+  as a nested `error:{code,message}` object. `HelloAuth` implements both sides of the proof.
+- **Docs**: `docs/PROTOCOL.md` rewritten to the exact bytes/labels implemented; `docs/THIRD_PARTY.md`
+  merged with the Android and relay lanes (kotlinx.serialization Apache-2.0, Bouncy Castle 1.87
+  MIT-style, Gson via the relay, AGP build-only); short-code examples in README/SPEC corrected from
+  `7K4-Q9M` to a code that passes its own check symbol (`7K4-Q9B`).
+- 108 JVM tests covering every acceptance criterion (JSON round-trips for every message type,
+  handshake + both encryption directions, tampered/replayed ciphertext, short-code check symbol and
+  normalisation, link/file round-trip, 10-minute expiry + single use with an injected clock,
+  permission table, arbiter queue/idle/kickAll, chunk/reassemble, relay proof vectors).
+
+**Left / for other lanes**
+
+- Relay (02): the wire contract is now implemented in `core` as well. The relay can delete its local
+  `crypto/Base32.kt`, `crypto/X25519.kt`, `envelope/RelayEnvelope.kt` and the `HelloProof` copy and call
+  `PeerIds`, `HelloAuth`, `RelayEnvelope`/`EnvelopeCodec` from `:core` (the shapes are identical). The
+  relay's BigInteger X25519 is not constant time; `core`'s is Bouncy Castle's.
+- Android (03): `core` now models the protocol, so replace the local `Request`/`Response`/
+  `PermissionLevel`/`ControlArbiter` copies in `android/executor-core` with the `core` types at the
+  transport boundary (`Commands.decodeArgs`, `Commands.check`, `ControlArbiter`, `AppMessages`).
+  Lane 03's additive extensions are now in core and PROTOCOL.md: `UiNode.visible`, `long_press` with
+  `node_id`, `request_control` returning `{granted:false, position}`. Wire `PairingManager` +
+  `JsonFileBotRegistry` into the pairing UI and `E2ESession` into the foreground service. The APK build
+  is pending an Android SDK (not installed on this PC).
+- Bot/MCP (04): drive the documented JSON on top of `AppMessages`; `core/README.md` has copy-paste
+  snippets.
+- Nice-to-have follow-ups: JSON schema files under `docs/`, negative tests for very large UI trees,
+  desktop-side `SecureChannel` concurrency notes.
+
+**How to test**: `gradlew.bat :core:test` (JDK 25 on PATH, no Android SDK needed).
+
+**Blockers**: none. No `origin` remote exists yet, so nothing was pushed (commits only).
+
 ## 2026-11-23 11:14–11:35 — ds2 / deepseek/deepseek-flash — task 02 relay server (`:relay`)
 
 **Done (acceptance criteria met, `:relay:test` green: 45 tests)**

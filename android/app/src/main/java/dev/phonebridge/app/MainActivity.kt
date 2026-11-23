@@ -1,30 +1,62 @@
 package dev.phonebridge.app
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
 import dev.phonebridge.executor.UiTreeSnapshot
+import dev.phonebridge.ui.ControllerNotifications
 
 /**
- * Minimal first screen: it shows whether device control is on, takes the user to the accessibility
- * settings page, and lets them check what a bot would see. Pairing, the bot list and the activity log
- * are later tasks.
+ * Home screen: whether the bridge is running and who is in control, the three set-up checks, and a
+ * door to pairing, the bot list, the activity log and the relay screen.
  */
 class MainActivity : Activity() {
 
+    private lateinit var bridgeState: TextView
+    private lateinit var controllerState: TextView
     private lateinit var serviceState: TextView
     private lateinit var testResult: TextView
+    private lateinit var toggleBridge: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        bridgeState = findViewById(R.id.bridge_state)
+        controllerState = findViewById(R.id.controller_state)
         serviceState = findViewById(R.id.service_state)
         testResult = findViewById(R.id.test_result)
+        toggleBridge = findViewById(R.id.toggle_bridge)
+
+        toggleBridge.setOnClickListener {
+            if (BridgeHub.isRunning) {
+                BridgeService.stop(this)
+            } else {
+                BridgeService.start(this)
+            }
+            // The service flips state asynchronously; onResume refreshes it.
+            bridgeState.postDelayed({ refresh() }, 300)
+        }
 
         findViewById<Button>(R.id.open_accessibility_settings).setOnClickListener {
             SettingsLinks.openAccessibilitySettings(this)
+        }
+        findViewById<Button>(R.id.open_onboarding).setOnClickListener {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+        }
+        findViewById<Button>(R.id.open_pairing).setOnClickListener {
+            startActivity(Intent(this, PairingActivity::class.java))
+        }
+        findViewById<Button>(R.id.open_bots).setOnClickListener {
+            startActivity(Intent(this, BotListActivity::class.java))
+        }
+        findViewById<Button>(R.id.open_log).setOnClickListener {
+            startActivity(Intent(this, ActivityLogActivity::class.java))
+        }
+        findViewById<Button>(R.id.open_relay).setOnClickListener {
+            startActivity(Intent(this, RelayActivity::class.java))
         }
         findViewById<Button>(R.id.test_screen_read).setOnClickListener {
             showScreenReadResult()
@@ -33,14 +65,21 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        refreshServiceState()
+        refresh()
     }
 
-    private fun refreshServiceState() {
+    private fun refresh() {
         val connected = AccessibilityBridge.isConnected
         serviceState.setText(
             if (connected) R.string.main_service_enabled else R.string.main_service_disabled,
         )
+
+        val running = BridgeHub.isRunning
+        bridgeState.setText(if (running) R.string.main_bridge_running else R.string.main_bridge_stopped)
+        toggleBridge.setText(if (running) R.string.main_stop_bridge else R.string.main_start_bridge)
+
+        val content = BridgeHub.controller()?.bridgeState?.notificationContent()
+        controllerState.text = content?.text ?: ControllerNotifications.text(null)
     }
 
     private fun showScreenReadResult() {
@@ -51,7 +90,7 @@ class MainActivity : Activity() {
         // Diagnostic only: this runs on the main thread for the button press.
         val tree = AccessibilityBridge.service?.readTree()
         if (tree == null) {
-            testResult.text = getString(R.string.main_test_result_disabled)
+            testResult.setText(R.string.main_test_result_disabled)
             return
         }
         val snapshot = UiTreeSnapshot.capture(tree)

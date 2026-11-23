@@ -1,7 +1,7 @@
 // The PhoneBridge Android app. Android Gradle plugin 9.0.1 (Gradle >= 9.1) with its built-in Kotlin
 // support, so no separate Kotlin Android plugin is applied. This module is only included in
 // settings.gradle.kts when an Android SDK is present; all testable logic lives in
-// :android:executor-core so the JVM tests run on machines without an SDK.
+// :android:executor-core and :android:ui-core so the JVM tests run on machines without an SDK.
 plugins {
     id("com.android.application")
 }
@@ -37,4 +37,14 @@ android {
 dependencies {
     // Pure Kotlin/JVM: request dispatch, permission checks, UI-tree ids, control arbitration.
     implementation(project(":android:executor-core"))
+    // Pure Kotlin/JVM: pairing countdown, approvals, bot list, activity log, relay choice, onboarding.
+    implementation(project(":android:ui-core"))
+    // Protocol types, pairing manager, Noise sessions and the JSON-file bot registry.
+    implementation(project(":core"))
+    // Embedded relay and the reconnecting relay client.
+    implementation(project(":relay"))
+    // QR encoding for the pairing screen (Apache-2.0, ZXing core only).
+    implementation("com.google.zxing:core:3.5.3")
+    // Already a :relay dependency; used directly for the relay short-code mailbox JSON.
+    implementation("com.google.code.gson:gson:2.11.0")
 }

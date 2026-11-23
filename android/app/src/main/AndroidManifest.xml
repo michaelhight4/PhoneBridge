@@ -2,8 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- targetSdk 36 requires a type for every foreground service; the bridge is both. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- open_app {label} lists launchable apps only, so a launcher-activity query is enough; we do
          not ask for QUERY_ALL_PACKAGES. -->
@@ -32,6 +38,39 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".PairingActivity"
+            android:exported="false"
+            android:label="@string/pairing_title" />
+
+        <activity
+            android:name=".ApprovalActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:label="@string/approval_title"
+            android:theme="@style/Theme.PhoneBridge.Approval" />
+
+        <activity
+            android:name=".BotListActivity"
+            android:exported="false"
+            android:label="@string/bots_title" />
+
+        <activity
+            android:name=".ActivityLogActivity"
+            android:exported="false"
+            android:label="@string/log_title" />
+
+        <activity
+            android:name=".RelayActivity"
+            android:exported="false"
+            android:label="@string/relay_title" />
+
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:label="@string/onboarding_title" />
+
         <!-- The device-control half. The user enables it in Settings > Accessibility; nothing here
              runs without that consent. -->
         <service
@@ -45,6 +84,18 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- The encrypted link to the chosen relay. It survives the app being swiped away so a bot
+             can still be stopped from the notification. -->
+        <service
+            android:name=".BridgeService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the user's own PhoneBridge relay for their own paired devices." />
         </service>
     </application>
 

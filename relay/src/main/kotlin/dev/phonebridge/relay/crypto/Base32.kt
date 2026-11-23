@@ -15,10 +15,21 @@ object Base32 {
     /** Crockford alphabet, uppercase, without the ambiguous I, L, O and U. */
     private const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
+    /** RFC 4648 base32 alphabet, used for `peer_id` (docs/PROTOCOL.md). */
+    private const val RFC4648_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+
     /** Crockford check symbols beyond the 32 data symbols. */
     private const val CHECK_SYMBOLS = "*~\$=^"
 
-    fun encode(data: ByteArray): String {
+    fun encode(data: ByteArray): String = encodeWith(ALPHABET, data)
+
+    /**
+     * RFC 4648 base32, lowercase, no padding. `peer_id` uses this alphabet (docs/PROTOCOL.md), which
+     * is deliberately different from the Crockford alphabet of the short pairing codes.
+     */
+    fun encodeRfc4648(data: ByteArray): String = encodeWith(RFC4648_ALPHABET, data)
+
+    private fun encodeWith(alphabet: String, data: ByteArray): String {
         if (data.isEmpty()) return ""
         val out = StringBuilder((data.size * 8 + 4) / 5)
         var buffer = 0
@@ -27,12 +38,12 @@ object Base32 {
             buffer = (buffer shl 8) or (byte.toInt() and 0xFF)
             bits += 8
             while (bits >= 5) {
-                out.append(ALPHABET[(buffer shr (bits - 5)) and 0x1F])
+                out.append(alphabet[(buffer shr (bits - 5)) and 0x1F])
                 bits -= 5
             }
         }
         if (bits > 0) {
-            out.append(ALPHABET[(buffer shl (5 - bits)) and 0x1F])
+            out.append(alphabet[(buffer shl (5 - bits)) and 0x1F])
         }
         return out.toString().lowercase()
     }

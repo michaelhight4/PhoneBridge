@@ -42,7 +42,8 @@ object PeerId {
     fun of(publicKey: ByteArray): String {
         require(publicKey.size == 32) { "X25519 public key must be 32 bytes" }
         val digest = Codec.sha256(publicKey)
-        return Base32.encode(digest.copyOfRange(0, 16))
+        // docs/PROTOCOL.md pins the RFC 4648 alphabet for peer_id (Crockford is only for short codes).
+        return Base32.encodeRfc4648(digest.copyOfRange(0, 16))
     }
 
     /** True when [peerId] is the id derived from [publicKey] (case insensitive). */

@@ -21,7 +21,23 @@ class Base32Test {
         val pair = PeerKeyPair.generate()
         assertEquals(26, pair.peerId.length)
         assertEquals(pair.peerId.lowercase(), pair.peerId)
-        assertTrue(pair.peerId.all { it in "0123456789abcdefghjkmnpqrstvwxyz" })
+        // docs/PROTOCOL.md: peer_id uses the RFC 4648 alphabet, not the Crockford short-code one.
+        assertTrue(pair.peerId.all { it in "abcdefghijklmnopqrstuvwxyz234567" })
+    }
+
+    @Test
+    fun `peer ids match core byte for byte`() {
+        repeat(10) {
+            val pair = PeerKeyPair.generate()
+            assertEquals(
+                dev.phonebridge.core.identity.PeerIds.peerId(pair.publicKey),
+                pair.peerId,
+            )
+            assertEquals(
+                dev.phonebridge.core.identity.PeerIds.fingerprint(pair.publicKey),
+                pair.fingerprint,
+            )
+        }
     }
 
     @Test
@@ -30,7 +46,7 @@ class Base32Test {
         val fingerprint = pair.fingerprint
         assertEquals(9, fingerprint.length)
         assertEquals('-', fingerprint[4])
-        assertTrue(fingerprint.replace("-", "").all { it in "0123456789ABCDEFGHJKMNPQRSTVWXYZ" })
+        assertTrue(fingerprint.replace("-", "").all { it in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" })
     }
 
     @Test

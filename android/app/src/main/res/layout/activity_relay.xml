@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/relay_title"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/relay_hint"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/relay_host"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/relay_this_phone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/relay_this_phone" />
+
+            <RadioButton
+                android:id="@+id/relay_my_pc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/relay_my_pc" />
+
+            <RadioButton
+                android:id="@+id/relay_custom"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/relay_custom" />
+        </RadioGroup>
+
+        <EditText
+            android:id="@+id/relay_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/relay_url_hint"
+            android:inputType="textUri"
+            android:maxLines="1" />
+
+        <EditText
+            android:id="@+id/relay_pin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/relay_pin_hint"
+            android:inputType="text"
+            android:maxLines="1" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/relay_pin_hint_long"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/relay_save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/relay_save" />
+
+        <Button
+            android:id="@+id/relay_move_here"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/relay_move_here" />
+
+        <TextView
+            android:id="@+id/relay_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textSize="14sp" />
+    </LinearLayout>
+</ScrollView>

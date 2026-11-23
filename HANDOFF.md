@@ -72,22 +72,14 @@ what is left, how to build/test, blockers.
   clients list 17 tools, CLI devices/status/help behave, and the real relay interop described above.
 - **Blockers**: none for merging. The remaining risk is only the Android APK side (SDK missing).
 
-
-## 2026-11-23 — setup (Grok Bot)
-- Repo scaffolded: docs/SPEC.md, docs/PROTOCOL.md, docs/BOT_WORKFLOW.md, Gradle wrapper (9.2.1) with
-  `core` and `relay` JVM modules (empty), folders android/, mcp/, desktop/.
-- Toolchain on this PC: JDK 25 (Temurin), Node, Git. **No Android SDK** (no ANDROID_HOME, no
-  %LOCALAPPDATA%\Android\Sdk), no global Gradle (use `gradlew.bat`). Android modules are included in
-  `settings.gradle.kts` only when an SDK is found; until then write the Android code and keep
-  JVM-testable logic in plain Kotlin classes with JVM unit tests.
-- No GitHub remote yet (gh not logged in). Push steps are skipped until `origin` exists.
-
 ## 2026-11-23 12:15 — ds2 (deepseek/deepseek-flash) — relay: re-merged main, whole suite green
 
 **Done**
 - Merged `main` again (desktop agent, e2e harness, protocol schemas) into `pb/relay`. No conflicts.
 - Repo-wide `gradlew.bat test` is green, including the lanes that consume the relay:
-  - `:relay:test` — 33 tests;
+  - `:relay:test` — 39 tests (added six relay-specific ones: a second connection replaces the first and
+    routing follows the newest, a second `hello` is rejected, mailbox oversize/full limits, move-token
+    binding and expiry, secret decoding, identity + certificate stability across restarts);
   - `:e2e:test` — 8 tests: a fake phone (`:core` + the Kotlin executor) and bot clients over a real
     embedded relay, covering connect/auth, pairing mailboxes and commands end to end;
   - `:desktop:test` — 66 tests, including `DesktopRelayIntegrationTest` (3) which starts the embedded
@@ -102,7 +94,7 @@ that are offline at hand-over are still open.
 **How to test**
 ```bash
 gradlew.bat test                    # every module (relay, core, desktop, e2e, executor, ui-core)
-gradlew.bat :relay:test             # relay only, 33 tests on loopback
+gradlew.bat :relay:test             # relay only, 39 tests on loopback
 gradlew.bat :relay:run --args="--port 8443"
 ```
 

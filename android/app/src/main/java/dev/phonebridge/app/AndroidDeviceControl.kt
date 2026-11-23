@@ -15,6 +15,7 @@ import dev.phonebridge.executor.LaunchResult
 import dev.phonebridge.executor.NotificationItem
 import dev.phonebridge.executor.Screenshot
 import dev.phonebridge.executor.ScreenshotFormat
+import dev.phonebridge.executor.ShizukuState
 import dev.phonebridge.executor.UiNode
 
 /**
@@ -116,8 +117,8 @@ class AndroidDeviceControl(private val context: Context) : DeviceControl {
             device = device,
             battery = battery,
             screenOn = screenOn,
-            // Shizuku support is its own task; report false until it is wired in.
-            shizuku = false,
+            // PROTOCOL.md §6.1: `shizuku` means the service is alive and PhoneBridge may use it.
+            shizuku = ShizukuBridge.state == ShizukuState.READY,
         )
     }
 }

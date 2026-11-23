@@ -29,6 +29,14 @@ object ExecutorProtocol {
             args = request.args.mapValues { (_, value) -> toKotlin(value) },
         )
 
+    /** `:core` permission levels and the executor's own enum are separate types; map by name. */
+    fun toExecutor(level: dev.phonebridge.core.model.PermissionLevel): dev.phonebridge.executor.PermissionLevel =
+        when (level) {
+            dev.phonebridge.core.model.PermissionLevel.VIEW -> dev.phonebridge.executor.PermissionLevel.VIEW
+            dev.phonebridge.core.model.PermissionLevel.CONTROL -> dev.phonebridge.executor.PermissionLevel.CONTROL
+            dev.phonebridge.core.model.PermissionLevel.FULL -> dev.phonebridge.executor.PermissionLevel.FULL
+        }
+
     fun toAppResponse(response: Response): AppResponse {
         if (response.ok) {
             val result = response.result ?: emptyMap()

@@ -44,6 +44,13 @@ data class PairingOffer(
     val exp: Long,
     @SerialName("device_name")
     val deviceName: String? = null,
+    /**
+     * Optional base64url SHA-256 of the relay's DER certificate, for a relay that terminates TLS with a
+     * self-signed certificate (`relay/PROTOCOL-RELAY.md` section 0). The bot passes it to its relay
+     * client as the certificate pin, otherwise the handshake fails against an unknown CA.
+     */
+    @SerialName("relay_pin")
+    val relayPin: String? = null,
 ) {
     val secretBytes: ByteArray
         get() = B64Url.decode(secret)
@@ -74,6 +81,14 @@ data class PairingOffer(
         if (PeerIds.peerId(deviceKey) != deviceId) throw ProtocolException("device_id does not match device_pub")
         if (!ShortCode.isValid(code)) throw ProtocolException("invalid pairing code: $code")
         if (exp <= 0) throw ProtocolException("pairing offer has no expiry")
+        relayPin?.let { pin ->
+            val bytes = try {
+                B64Url.decode(pin)
+            } catch (e: IllegalArgumentException) {
+                throw ProtocolException("relay_pin is not base64url", e)
+            }
+            if (bytes.size != 32) throw ProtocolException("relay_pin must be a 32-byte SHA-256 value")
+        }
     }
 }
 

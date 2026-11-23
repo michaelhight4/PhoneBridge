@@ -17,6 +17,9 @@ Use the repo Gradle wrapper (`gradlew.bat` on Windows, `./gradlew` on Unix).
 ```powershell
 .\gradlew.bat :core:test
 .\gradlew.bat :relay:test
+.\gradlew.bat :android:executor-core:test
+.\gradlew.bat :android:ui-core:test
+.\gradlew.bat :e2e:test          # v1 acceptance run, see "End-to-end harness" below
 # or all JVM tests
 .\gradlew.bat test
 ```
@@ -41,6 +44,34 @@ Kotlin `:core` tests and TypeScript `mcp` tests can emit protocol samples for cr
 - `relay/build/protocol-samples/*.json`
 
 The conformance runner (`src/protocol-samples.test.js`) discovers them automatically when present. If a sample includes a `$schema` or `schema` field naming a schema file/id, that schema is used; otherwise the runner heuristically picks candidate schemas and requires at least one match.
+
+The end-to-end harness writes genuine samples there: run `.\gradlew.bat :e2e:test` first, then
+`npm test` in `tests/conformance`, and the published schemas validate real PhoneBridge output
+(pairing offer, pair request/result, application request/response/event, relay envelope).
+
+## End-to-end harness (fake phone)
+
+`tests/e2e` (Gradle module `:e2e`) is the v1 acceptance run. It starts real relays, pairs a bot by
+short code, link and `.pbpair` file, opens the Noise `XX` session and drives a fake phone through
+`status`, `screenshot`, `ui_tree`, `tap`, `swipe`, `type`, `key`, `open_app`, a View-level permission
+denial, control queueing between two bots, Kick everyone and `relay_move` between two relays.
+
+```powershell
+.\gradlew.bat :e2e:test
+```
+
+The fake phone is the real `:core` + `:relay` + `:android:executor-core` + `:android:ui-core`
+(`SessionHandler`, `ApprovalController`, `BridgeState`) with only `DeviceControl` faked, so a green
+run means the protocol works, not that a mock agreed with itself.
+
+For manual integration with an external bot:
+
+```powershell
+.\gradlew.bat :e2e:runFakePhone
+```
+
+It prints a relay URL, certificate pin, short code, link and `.pbpair` path, and auto-approves pairing
+requests at Control. Press Enter to stop.
 
 ## Mock device
 

@@ -1,5 +1,6 @@
-package dev.phonebridge.app
+package dev.phonebridge.ui
 
+import dev.phonebridge.core.PairingException
 import dev.phonebridge.core.crypto.E2ESession
 import dev.phonebridge.core.crypto.Frame
 import dev.phonebridge.core.crypto.NoiseRole
@@ -10,15 +11,12 @@ import dev.phonebridge.core.model.RelayEnvelope
 import dev.phonebridge.core.model.RelayType
 import dev.phonebridge.core.pairing.BotRecord
 import dev.phonebridge.core.pairing.BotRegistry
-import dev.phonebridge.core.PairingException
 import dev.phonebridge.core.pairing.PairingManager
 import dev.phonebridge.core.pairing.PendingApproval
 import dev.phonebridge.executor.BotSession
 import dev.phonebridge.executor.ErrorCode as ExecutorErrorCode
 import dev.phonebridge.executor.Request
 import dev.phonebridge.executor.Response
-import dev.phonebridge.ui.BridgeState
-import dev.phonebridge.ui.ExecutorProtocol
 
 /**
  * Turns relay envelopes into paired-bot sessions:
@@ -179,7 +177,7 @@ class SessionHandler(
         wire: dev.phonebridge.core.model.AppRequest,
     ) {
         val request = ExecutorProtocol.toExecutor(wire)
-        val botSession = BotSession(record.botId, record.name, record.level)
+        val botSession = BotSession(record.botId, record.name, ExecutorProtocol.toExecutor(record.level))
         val response = try {
             executor(botSession, request)
         } catch (_: Exception) {

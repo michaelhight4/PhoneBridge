@@ -71,6 +71,22 @@
             android:layout_marginTop="12dp"
             android:text="@string/main_open_settings" />
 
+        <TextView
+            android:id="@+id/shizuku_state"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/main_shizuku_off"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/open_shizuku"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/main_open_shizuku" />
+
         <Button
             android:id="@+id/open_onboarding"
             android:layout_width="match_parent"

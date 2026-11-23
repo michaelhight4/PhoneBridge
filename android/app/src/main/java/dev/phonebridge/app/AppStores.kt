@@ -56,9 +56,35 @@ object AppStores {
         return identity
     }
 
-    fun registry(context: Context): JsonFileBotRegistry = JsonFileBotRegistry(registryFile(context))
+    fun registry(context: Context): JsonFileBotRegistry {
+        val file = registryFile(context)
+        return try {
+            JsonFileBotRegistry(file)
+        } catch (e: Exception) {
+            quarantine(file, "bots")
+            JsonFileBotRegistry(file)
+        }
+    }
 
-    fun activityLog(context: Context): JsonFileActivityLog = JsonFileActivityLog(activityFile(context))
+    fun activityLog(context: Context): JsonFileActivityLog {
+        val file = activityFile(context)
+        return try {
+            JsonFileActivityLog(file)
+        } catch (e: Exception) {
+            quarantine(file, "activity")
+            JsonFileActivityLog(file)
+        }
+    }
+
+    /**
+     * Keeps a corrupt store for inspection and lets the app start with an empty one, instead of
+     * crashing the foreground service on a bad JSON file.
+     */
+    private fun quarantine(file: File, tag: String) {
+        if (!file.exists()) return
+        val broken = File(file.parentFile, "$tag.corrupt.${System.currentTimeMillis()}.json")
+        runCatching { Files.move(file.toPath(), broken.toPath(), StandardCopyOption.REPLACE_EXISTING) }
+    }
 
     fun relaySettings(context: Context): RelaySettingsStore = RelaySettingsStore(relaySettingsFile(context))
 }

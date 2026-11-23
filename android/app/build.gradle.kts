@@ -6,6 +6,13 @@ plugins {
     id("com.android.application")
 }
 
+// Needed for the Shizuku and ZXing AARs/jars. The plain-JVM modules declare their own repositories;
+// this module only had project dependencies before.
+repositories {
+    google()
+    mavenCentral()
+}
+
 android {
     namespace = "dev.phonebridge.app"
     compileSdk = 36
@@ -45,4 +52,12 @@ dependencies {
     implementation(project(":relay"))
     // QR encoding for the pairing screen (Apache-2.0, ZXing core only).
     implementation("com.google.zxing:core:3.5.3")
+
+    // Shizuku (MIT): the privileged helper API, its binder provider, and the service AIDL that
+    // carries IShizukuService/IRemoteProcess. Only the Full-level commands need it; without Shizuku
+    // installed or running those commands answer shizuku_unavailable and everything else keeps
+    // working. See ShizukuProcess for how a shell process is started.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation("dev.rikka.shizuku:aidl:13.1.5")
 }

@@ -11,11 +11,18 @@
     "relay": { "type": "string", "pattern": "^wss?://" },
     "device_id": {
       "type": "string",
-      "pattern": "^[a-z2-7]{26}$"
+      "pattern": "^[0-9abcdefghjkmnpqrstvwxyz]{26}$",
+      "description": "Crockford base32 (no i, l, o, u) of the first 16 bytes of SHA-256(device_pub)."
     },
-    "device_pub": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" },
-    "secret": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" },
+    "device_pub": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "secret": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
     "code": { "type": "string", "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{3}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{3}$" },
-    "exp": { "type": "integer", "minimum": 0 }
+    "exp": { "type": "integer", "minimum": 0 },
+    "device_name": { "type": "string", "description": "Optional display name shown on the Allow this bot? screen." },
+    "relay_pin": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "Optional base64url SHA-256 of the relay's DER certificate, for a self-signed relay."
+    }
   }
 }

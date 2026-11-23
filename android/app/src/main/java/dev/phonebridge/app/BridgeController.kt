@@ -5,7 +5,6 @@ import android.util.Log
 import dev.phonebridge.core.identity.Identity
 import dev.phonebridge.core.model.PairingOffer
 import dev.phonebridge.core.pairing.BotRegistry
-import dev.phonebridge.core.pairing.JsonFileBotRegistry
 import dev.phonebridge.core.pairing.PairingManager
 import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.core.util.PbJson
@@ -25,10 +24,10 @@ import dev.phonebridge.ui.ApprovalController
 import dev.phonebridge.ui.BotListController
 import dev.phonebridge.ui.BridgeState
 import dev.phonebridge.ui.HeartControl
-import dev.phonebridge.ui.JsonFileActivityLog
 import dev.phonebridge.ui.PairingController
 import dev.phonebridge.ui.RelayController
 import dev.phonebridge.ui.RelayResult
+import dev.phonebridge.ui.SessionHandler
 import kotlinx.serialization.json.jsonObject
 
 /**
@@ -49,8 +48,8 @@ class BridgeController(
     private val clock: () -> Long = { System.currentTimeMillis() }
 
     val identity: Identity = AppStores.identity(context)
-    val registry: BotRegistry = JsonFileBotRegistry(AppStores.registryFile(context), clock)
-    val activityLog: ActivityLog = JsonFileActivityLog(AppStores.activityFile(context), clock = clock)
+    val registry: BotRegistry = AppStores.registry(context)
+    val activityLog: ActivityLog = AppStores.activityLog(context)
 
     private val pairingManager = PairingManager(identity, registry, clock)
     val bridgeState = BridgeState(BridgeRuntime.control, registry, activityLog, clock)
@@ -196,8 +195,10 @@ class BridgeController(
     private fun createOffer(): PairingOffer {
         val relayUrl = relayController.offerUrl()
             ?: throw IllegalStateException("Choose where the heart runs before pairing")
-        ensureClient(relayUrl, relayHandle?.fingerprint ?: relayController.settings().tlsPin)
-        val offer = pairingManager.createOffer(relayUrl, AppStores.deviceName())
+        // The bot must pin a self-signed relay's certificate, so the offer has to carry it too.
+        val tlsPin = relayHandle?.fingerprint ?: relayController.settings().tlsPin
+        ensureClient(relayUrl, tlsPin)
+        val offer = pairingManager.createOffer(relayUrl, AppStores.deviceName(), relayPin = tlsPin)
         // Publish the offer to the relay's short-code mailbox, so a bot given `7K4-Q9B` can find it.
         runCatching {
             val json = PbJson.encodeToJsonElement(PairingOffer.serializer(), offer).jsonObject

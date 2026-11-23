@@ -30,7 +30,8 @@
         },
         "max_width": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 16,
+          "maximum": 16384
         }
       }
     },
@@ -40,8 +41,7 @@
       "required": [
         "mime",
         "width",
-        "height",
-        "data_b64"
+        "height"
       ],
       "properties": {
         "mime": {
@@ -56,7 +56,27 @@
           "minimum": 1
         },
         "data_b64": {
+          "type": "string",
+          "description": "The image, base64url, when it fits in one message."
+        },
+        "chunked": {
+          "type": "boolean",
+          "description": "True when the pixels arrive as chunk events keyed by chunk_id."
+        },
+        "chunk_id": {
           "type": "string"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "description": "Lowercase hex SHA-256 of the whole payload."
         }
       }
     }

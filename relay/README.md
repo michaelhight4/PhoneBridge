@@ -142,10 +142,11 @@ gradlew.bat :relay:test
 
 The suite covers, in-process and on loopback: two peers authenticating and exchanging envelopes in
 both directions; forged/unauthorised `hello` (bad proof, wrong nonce, peer id that does not match the
-key, all-zero key, unauthenticated route); `peer_offline`; ping/pong; rate limiting; oversize frames
-dropped (configured limit and the 16 MiB default); short-code mailbox single release and expiry;
-`relay_move` with both peers following to the second relay and still exchanging messages, including
-token replay and expiry; and TLS with fingerprint pinning (plus the rejection of a wrong pin).
+key, all-zero key, unauthenticated route); a second connection replacing the first; `peer_offline`;
+ping/pong; rate limiting; oversize frames dropped (configured limit and the 16 MiB default); short-code
+mailbox single release, expiry and size/entry limits; `relay_move` with both peers following to the
+second relay and still exchanging messages, including token replay, expiry and peer binding; and TLS
+with fingerprint pinning (wrong pin rejected, host names verified for CA certificates).
 
 ## Android notes
 

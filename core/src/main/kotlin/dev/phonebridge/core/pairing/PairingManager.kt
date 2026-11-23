@@ -96,6 +96,7 @@ class PairingManager(
     fun createOffer(
         relayUrl: String,
         deviceName: String? = identity.name,
+        relayPin: String? = null,
     ): PairingOffer = synchronized(lock) {
         prune()
         val now = clock()
@@ -117,6 +118,7 @@ class PairingManager(
             code = ShortCode.format(code),
             exp = (now + offerTtlMs) / 1000L,
             deviceName = deviceName,
+            relayPin = relayPin,
         )
         offer.validate()
         val state = OfferState(offer, now)

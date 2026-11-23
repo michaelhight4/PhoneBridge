@@ -1,6 +1,7 @@
 package dev.phonebridge.ui
 
 import dev.phonebridge.core.Version
+import dev.phonebridge.core.util.AtomicFiles
 import dev.phonebridge.core.util.PbJsonPretty
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -39,7 +40,8 @@ class RelaySettingsStore(private val file: Path) {
     fun load(): RelaySettings {
         if (!Files.exists(file)) return RelaySettings()
         return try {
-            val text = Files.readString(file)
+            // Files.readString is Java 11+ (Android 13); read bytes so this runs on API 26.
+            val text = String(Files.readAllBytes(file), Charsets.UTF_8)
             PbJsonPretty.decodeFromString(RelaySettingsFile.serializer(), text).settings
         } catch (_: Exception) {
             // A corrupt settings file must not brick the app: fall back to the safe default.
@@ -51,14 +53,12 @@ class RelaySettingsStore(private val file: Path) {
         val parent = file.toAbsolutePath().parent
         if (parent != null) Files.createDirectories(parent)
         val temp = file.resolveSibling(file.fileName.toString() + ".tmp")
-        Files.writeString(
-            temp,
-            PbJsonPretty.encodeToString(
-                RelaySettingsFile.serializer(),
-                RelaySettingsFile(settings = settings),
-            ),
+        val json = PbJsonPretty.encodeToString(
+            RelaySettingsFile.serializer(),
+            RelaySettingsFile(settings = settings),
         )
-        Files.move(temp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        Files.write(temp, json.toByteArray(Charsets.UTF_8))
+        AtomicFiles.replace(temp, file)
         return settings
     }
 

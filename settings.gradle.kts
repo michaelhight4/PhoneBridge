@@ -17,6 +17,10 @@ rootProject.name = "PhoneBridge"
 include(":core")
 include(":relay")
 
+// Desktop agent (phase 2, Windows first): plain Kotlin/JVM plus Swing and java.awt, so it builds and
+// tests on this SDK-less PC with no extra toolchain.
+include(":desktop")
+
 // Plain Kotlin/JVM module: all command dispatch, permission and arg-parsing logic lives here so it
 // builds and tests without an Android SDK. This is always part of the build.
 include(":android:executor-core")
@@ -31,3 +35,8 @@ val sdkFound = System.getenv("ANDROID_HOME") != null || System.getenv("ANDROID_S
 if (sdkFound && file("android/app/build.gradle.kts").exists()) {
     include(":android:app")
 }
+
+// End-to-end harness: a fake phone (real :core + :relay + the plain-Kotlin executor) driving a real
+// relay server with bot clients. Plain JVM, so it runs without an Android SDK.
+include(":e2e")
+project(":e2e").projectDir = file("tests/e2e")

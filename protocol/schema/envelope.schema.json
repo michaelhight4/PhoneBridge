@@ -2,20 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://phonebridge.dev/schema/envelope.schema.json",
   "title": "RelayEnvelope",
-  "description": "Plaintext relay framing envelope. The relay can route it but cannot read E2E payloads.",
+  "description": "Plaintext relay framing envelope. The relay can route it but cannot read E2E payloads. Every message type uses its own subset of the fields; docs/PROTOCOL.md section 3 is normative.",
   "oneOf": [
+    { "$ref": "#/$defs/challengeEnvelope" },
     { "$ref": "#/$defs/helloEnvelope" },
+    { "$ref": "#/$defs/helloOkEnvelope" },
     { "$ref": "#/$defs/routeEnvelope" },
     { "$ref": "#/$defs/pingEnvelope" },
     { "$ref": "#/$defs/pongEnvelope" },
     { "$ref": "#/$defs/errorEnvelope" },
-    { "$ref": "#/$defs/relayMovedEnvelope" }
+    { "$ref": "#/$defs/relayMovedEnvelope" },
+    { "$ref": "#/$defs/pairStoreEnvelope" },
+    { "$ref": "#/$defs/pairStoredEnvelope" },
+    { "$ref": "#/$defs/pairLookupEnvelope" },
+    { "$ref": "#/$defs/pairOfferEnvelope" }
   ],
   "$defs": {
     "peerId": {
       "type": "string",
-      "pattern": "^[a-z2-7]{26}$",
-      "description": "base32(first 16 bytes of SHA-256(public key)), lowercase, no padding."
+      "pattern": "^[0-9abcdefghjkmnpqrstvwxyz]{26}$",
+      "description": "Crockford base32 (no i, l, o, u) of the first 16 bytes of SHA-256(public key), lowercase, no padding."
     },
     "uuid": {
       "type": "string",
@@ -23,24 +29,64 @@
     },
     "base64url": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$"
+      "pattern": "^[A-Za-z0-9_-]*$",
+      "description": "base64url without padding (docs/PROTOCOL.md section 1)."
     },
-    "base64": {
+    "shortCode": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{3}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{3}$"
+    },
+    "challengeEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "nonce", "relay_pub", "relay_id"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "challenge" },
+        "nonce": { "$ref": "#/$defs/base64url" },
+        "relay_pub": { "$ref": "#/$defs/base64url" },
+        "relay_id": { "$ref": "#/$defs/peerId" },
+        "proof": { "type": "string", "minLength": 1 },
+        "expires": { "type": "integer" }
+      }
     },
     "helloEnvelope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["v", "type", "from", "pub", "sig", "role"],
+      "required": ["v", "type", "from", "pub", "sig", "role", "nonce"],
       "properties": {
         "v": { "const": 1 },
         "type": { "const": "hello" },
         "from": { "$ref": "#/$defs/peerId" },
-        "pub": { "$ref": "#/$defs/base64" },
-        "sig": { "$ref": "#/$defs/base64" },
+        "pub": { "$ref": "#/$defs/base64url" },
+        "sig": { "$ref": "#/$defs/base64url" },
         "role": { "enum": ["device", "bot"] },
-        "id": { "$ref": "#/$defs/uuid" }
+        "nonce": { "$ref": "#/$defs/base64url" },
+        "move_token": { "type": "string", "minLength": 1 },
+        "id": { "$ref": "#/$defs/uuid" },
+        "to": { "$ref": "#/$defs/peerId" }
+      }
+    },
+    "helloOkEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "to", "relay_id", "server_time"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "hello_ok" },
+        "to": { "$ref": "#/$defs/peerId" },
+        "relay_id": { "$ref": "#/$defs/peerId" },
+        "peer": { "$ref": "#/$defs/peerId" },
+        "server_time": { "type": "integer" },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_envelope_bytes": { "type": "integer", "minimum": 1 },
+            "rate_messages": { "type": "integer", "minimum": 1 },
+            "rate_window_ms": { "type": "integer", "minimum": 1 }
+          }
+        }
       }
     },
     "routeEnvelope": {
@@ -72,7 +118,7 @@
     "pongEnvelope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["v", "type", "from", "id"],
+      "required": ["v", "type", "id"],
       "properties": {
         "v": { "const": 1 },
         "type": { "const": "pong" },
@@ -115,6 +161,58 @@
         "id": { "$ref": "#/$defs/uuid" },
         "new_url": { "type": "string", "minLength": 1 },
         "token": { "type": "string" },
+        "expires": { "type": "integer" }
+      }
+    },
+    "pairStoreEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "from", "code", "offer"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "pair_store" },
+        "from": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "code": { "$ref": "#/$defs/shortCode" },
+        "offer": { "$ref": "https://phonebridge.dev/schema/pairing-offer.schema.json" }
+      }
+    },
+    "pairStoredEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "to", "code"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "pair_stored" },
+        "to": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "code": { "$ref": "#/$defs/shortCode" },
+        "expires": { "type": "integer" }
+      }
+    },
+    "pairLookupEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "from", "code"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "pair_lookup" },
+        "from": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "code": { "$ref": "#/$defs/shortCode" }
+      }
+    },
+    "pairOfferEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "to", "code", "offer"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "pair_offer" },
+        "to": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "code": { "$ref": "#/$defs/shortCode" },
+        "offer": { "$ref": "https://phonebridge.dev/schema/pairing-offer.schema.json" },
         "expires": { "type": "integer" }
       }
     }

@@ -76,6 +76,27 @@ class PairingLinksTest {
     }
 
     @Test
+    fun theRelayCertificatePinSurvivesLinkAndFile() {
+        val pin = B64Url.encode(ByteArray(32) { (it + 3).toByte() })
+        val original = offer().copy(relayPin = pin)
+        original.validate()
+        assertEquals(pin, PairingLinks.parseLink(PairingLinks.link(original)).relayPin)
+        assertEquals(pin, PairingLinks.parseFile(PairingLinks.fileContents(original)).relayPin)
+        // An offer without a pin still parses: the field is optional and additive.
+        assertEquals(null, PairingLinks.parseLink(PairingLinks.link(offer())).relayPin)
+    }
+
+    @Test
+    fun aMalformedRelayPinIsRejected() {
+        assertFailsWith<ProtocolException>("relay_pin must be base64url") {
+            offer().copy(relayPin = "!!!").validate()
+        }
+        assertFailsWith<ProtocolException>("relay_pin must be a 32-byte SHA-256 value") {
+            offer().copy(relayPin = B64Url.encode(ByteArray(16))).validate()
+        }
+    }
+
+    @Test
     fun malformedLinksAreRejected() {
         assertFailsWith<ProtocolException> { PairingLinks.parseLink("https://example.com/pair?d=abc") }
         assertFailsWith<ProtocolException> { PairingLinks.parseLink("phonebridge://pair") }

@@ -1,14 +1,8 @@
 {
-  "device": {
-    "model": "Pixel"
-  },
-  "battery": {
-    "level": 80
-  },
+  "device": "Pixel 9",
+  "battery": 88,
   "screen_on": true,
   "controller": null,
   "queue": [],
-  "shizuku": {
-    "available": false
-  }
+  "shizuku": false
 }

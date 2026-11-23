@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/pair-result.schema.json",
+  "title": "PairResult",
+  "description": "Device -> bot pairing result after the user approves or denies.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "granted_level", "device_name"],
+      "properties": {
+        "ok": { "const": true },
+        "granted_level": { "enum": ["view", "control", "full"] },
+        "device_name": { "type": "string", "minLength": 1 }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "reason"],
+      "properties": {
+        "ok": { "const": false },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  ]
+}

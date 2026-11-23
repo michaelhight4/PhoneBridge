@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/commands/settings.schema.json",
+  "title": "settings command",
+  "description": "Args and result for settings (level: Full).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "args",
+    "result"
+  ],
+  "properties": {
+    "args": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace",
+        "key"
+      ],
+      "properties": {
+        "namespace": {
+          "enum": [
+            "system",
+            "secure",
+            "global"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {}
+}

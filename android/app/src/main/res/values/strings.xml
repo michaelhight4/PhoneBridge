@@ -84,7 +84,7 @@
     <string name="bots_state_offline">offline</string>
     <string name="bots_state_switched_off">switched off</string>
     <string name="bots_unpair_title">Unpair %1$s?</string>
-    <string name="bots_unpair_message">This removes the bot's key and closes its session. Other bots keep working.</string>
+    <string name="bots_unpair_message">This removes the bot\'s key and closes its session. Other bots keep working.</string>
     <string name="bots_kick_title">Kick everyone?</string>
     <string name="bots_kick_message">Every live session is closed and the control queue is cleared. Paired keys stay, so bots can reconnect and ask again.</string>
     <string name="bots_level_title">Permission level for %1$s</string>

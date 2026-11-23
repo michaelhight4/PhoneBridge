@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneBridge</string>
+
+    <string name="accessibility_service_label">PhoneBridge device control</string>
+    <string name="accessibility_service_summary">Lets a bot you paired see this screen and tap, swipe and type for you.</string>
+    <string name="accessibility_service_description">PhoneBridge uses accessibility to read the screen and to perform taps, swipes and typing for the AI bot you paired with this phone. It only works while this service is enabled, only paired bots can send commands, and one bot drives at a time. Turn it off here at any time.</string>
+
+    <string name="main_title">PhoneBridge</string>
+    <string name="main_subtitle">Let your own AI bot use this phone. No central server, end-to-end encrypted.</string>
+    <string name="main_service_enabled">Device control: ON</string>
+    <string name="main_service_disabled">Device control: OFF</string>
+    <string name="main_service_hint">PhoneBridge needs the accessibility service to see the screen and to tap, swipe and type. Android asks you to switch it on yourself.</string>
+    <string name="main_open_settings">Open accessibility settings</string>
+    <string name="main_test_read">Test screen read</string>
+    <string name="main_test_result_placeholder">Press the test button to check what a bot would see.</string>
+    <string name="main_test_result_disabled">Device control is off, so there is nothing to read. Turn on the accessibility service first.</string>
+    <string name="main_footer">Only bots you pair can send commands. One bot is in control at a time, and you can stop everything from the notification.</string>
+</resources>

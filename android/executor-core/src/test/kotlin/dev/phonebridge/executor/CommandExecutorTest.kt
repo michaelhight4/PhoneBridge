@@ -393,24 +393,39 @@ class CommandExecutorTest {
     }
 
     @Test
-    fun `screenshot defaults to png and rejects bad quality or format`() {
+    fun `screenshot defaults to png and rejects bad quality or format and validates max_width`() {
         assertTrue(run(Fixtures.viewBot(), "screenshot").ok)
         assertEquals(ScreenshotFormat.PNG, device.screenshotCalls.first().format)
 
         assertEquals(ErrorCode.BAD_ARGS, run(Fixtures.viewBot(), "screenshot", "quality" to 0).error?.code)
+        assertEquals(ErrorCode.BAD_ARGS, run(Fixtures.viewBot(), "screenshot", "quality" to 101).error?.code)
         assertEquals(ErrorCode.BAD_ARGS, run(Fixtures.viewBot(), "screenshot", "format" to "gif").error?.code)
+        assertEquals(ErrorCode.BAD_ARGS, run(Fixtures.viewBot(), "screenshot", "max_width" to 0).error?.code)
+        assertEquals(ErrorCode.BAD_ARGS, run(Fixtures.viewBot(), "screenshot", "max_width" to 100_001).error?.code)
+    }
+
+    @Test
+    fun `screenshot works via MediaProjection when accessibility is off`() {
+        device.apiLevel = 33
+        device.accessibilityEnabled = false
+        device.mediaProjectionAvailable = true
+        val response = run(Fixtures.viewBot(), "screenshot")
+        assertTrue(response.ok, "${response.error}")
+        assertEquals(1, device.screenshotCalls.size)
     }
 
     @Test
     fun `screenshot needs accessibility or projection consent`() {
         device.apiLevel = 29
+        device.mediaProjectionAvailable = false
         val older = run(Fixtures.viewBot(), "screenshot")
         assertEquals(ErrorCode.PROJECTION_DENIED, older.error?.code)
 
         device.apiLevel = 33
         device.accessibilityEnabled = false
+        device.mediaProjectionAvailable = false
         val disabled = run(Fixtures.viewBot(), "screenshot")
-        assertEquals(ErrorCode.ACCESSIBILITY_DISABLED, disabled.error?.code)
+        assertEquals(ErrorCode.PROJECTION_DENIED, disabled.error?.code)
         assertTrue(device.screenshotCalls.isEmpty())
     }
 

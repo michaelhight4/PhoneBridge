@@ -92,8 +92,25 @@ class AndroidDeviceControl(private val context: Context) : DeviceControl {
         }
     }
 
-    override fun captureScreenshot(format: ScreenshotFormat, quality: Int?, maxWidth: Int?): Screenshot? =
-        service?.captureScreenshot(format, quality, maxWidth)
+    override fun mediaProjectionReady(): Boolean = BridgeRuntime.hasMediaProjectionConsent()
+
+    override fun captureScreenshot(format: ScreenshotFormat, quality: Int?, maxWidth: Int?): Screenshot? {
+        // Try accessibility first when available.
+        val accessibilityShot = service?.captureScreenshot(format, quality, maxWidth)
+        if (accessibilityShot != null) return accessibilityShot
+        // Fallback to MediaProjection if consented.
+        return captureScreenshotViaMediaProjection(format, quality, maxWidth)
+    }
+
+    private fun captureScreenshotViaMediaProjection(
+        format: ScreenshotFormat,
+        quality: Int?,
+        maxWidth: Int?,
+    ): Screenshot? {
+        // Minimal stub: MediaProjection capture requires ImageReader + VirtualDisplay setup.
+        // TODO: implement full MediaProjection capture path (ImageReader, scale, encode, chunking).
+        return null
+    }
 
     /**
      * Notification history needs a NotificationListenerService, which is a separate task. Until it

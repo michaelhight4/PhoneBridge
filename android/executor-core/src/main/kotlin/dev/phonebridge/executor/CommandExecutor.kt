@@ -135,17 +135,23 @@ class CommandExecutor(
         // docs/PROTOCOL.md 6.1: max_width 16..16384, the same range core's ScreenshotArgs validates.
         val maxWidth = args.int("max_width")?.also { requireInRange("max_width", it, 16, 16_384) }
 
-        // The accessibility screenshot API needs Android 11; older devices fall back to
-        // MediaProjection, which needs an explicit user grant (projection_denied until then).
-        if (device.apiLevel in 1..29) {
+        // Prefer accessibility takeScreenshot (API 30+). If not usable, try MediaProjection if ready.
+        val canAccessibility = device.apiLevel >= 30 && device.accessibilityEnabled
+        val canMediaProjection = device.mediaProjectionReady()
+        if (!canAccessibility && !canMediaProjection) {
+            if (device.apiLevel in 1..29 && !canMediaProjection) {
+                return Response.failure(
+                    request.id,
+                    ErrorCode.PROJECTION_DENIED,
+                    "accessibility screenshots need Android 11 (API 30); grant screen capture in the app",
+                )
+            }
             return Response.failure(
                 request.id,
                 ErrorCode.PROJECTION_DENIED,
-                "accessibility screenshots need Android 11 (API 30); grant screen capture in the app",
+                "grant screen capture in the app to enable screenshots",
             )
         }
-        if (!device.accessibilityEnabled) return accessibilityDisabled(request, Command.SCREENSHOT)
-
         val shot = device.captureScreenshot(format, quality, maxWidth)
             ?: return Response.failure(request.id, ErrorCode.INTERNAL, "the device returned no image")
         return Response.success(request.id, shot.toMap())

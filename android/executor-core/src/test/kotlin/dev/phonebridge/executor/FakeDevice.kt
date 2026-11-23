@@ -28,6 +28,7 @@ class FakeDevice(
     var launchResult: LaunchResult = LaunchResult.LAUNCHED
     var screenshotResult: Screenshot? =
         Screenshot("image/png", 1080, 2400, "iVBORw0KGgo=")
+    var mediaProjectionAvailable: Boolean = false
     var notificationItems: List<NotificationItem> = listOf(
         NotificationItem("com.example.chat", "Ada", "See you at 6", 1_700_000_000_000L),
     )
@@ -61,6 +62,8 @@ class FakeDevice(
         launches += packageName
         return launchResult
     }
+
+    override fun mediaProjectionReady(): Boolean = mediaProjectionAvailable
 
     override fun captureScreenshot(format: ScreenshotFormat, quality: Int?, maxWidth: Int?): Screenshot? {
         screenshotCalls += ScreenshotCall(format, quality, maxWidth)

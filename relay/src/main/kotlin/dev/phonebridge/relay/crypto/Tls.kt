@@ -1,5 +1,7 @@
 package dev.phonebridge.relay.crypto
 
+import dev.phonebridge.core.crypto.Primitives
+import dev.phonebridge.core.util.B64Url
 import java.io.File
 import java.math.BigInteger
 import java.security.KeyPairGenerator
@@ -45,10 +47,10 @@ object Tls {
     )
 
     fun fingerprint(certificate: X509Certificate): String =
-        Codec.b64url(Codec.sha256(certificate.encoded))
+        B64Url.encode(Primitives.sha256(certificate.encoded))
 
     fun fingerprintHex(certificate: X509Certificate): String =
-        Codec.hex(Codec.sha256(certificate.encoded)).uppercase().chunked(2).joinToString(":")
+        Primitives.toHex(Primitives.sha256(certificate.encoded)).uppercase().chunked(2).joinToString(":")
 
     /**
      * Loads [file] when it exists, otherwise generates a new self-signed key pair and certificate,
@@ -83,7 +85,7 @@ object Tls {
         file.outputStream().use { store.store(it, password) }
         restrictPermissions(file)
 
-        return material(certificate, password, aliasKeyManager(store, password))
+        return material(certificate, aliasKeyManager(store, password))
     }
 
     fun fromKeyStore(file: File, password: CharArray, alias: String = DEFAULT_ALIAS): Material {
@@ -91,12 +93,11 @@ object Tls {
         file.inputStream().use { store.load(it, password) }
         val certificate = store.getCertificate(alias) as? X509Certificate
             ?: throw IllegalStateException("keystore ${file.name} has no certificate under alias '$alias'")
-        return material(certificate, password, aliasKeyManager(store, password))
+        return material(certificate, aliasKeyManager(store, password))
     }
 
     private fun material(
         certificate: X509Certificate,
-        password: CharArray,
         keyManagers: Array<javax.net.ssl.KeyManager>
     ): Material {
         val context = SSLContext.getInstance("TLS")
@@ -186,14 +187,11 @@ object Tls {
     ): ByteArray {
         val serial = BigInteger(63, SecureRandom()).add(BigInteger.ONE)
         val signatureAlgorithm = Der.sequence(Der.oid(OID_ECDSA_WITH_SHA256))
-        val commonName = Der.tlv(
-            0x30,
-            Der.concat(
-                Der.set(
-                    Der.sequence(
-                        Der.oid(OID_COMMON_NAME),
-                        Der.tlv(0x0C, subject.removePrefix("CN=").toByteArray(Charsets.UTF_8))
-                    )
+        val commonName = Der.sequence(
+            Der.set(
+                Der.sequence(
+                    Der.oid(OID_COMMON_NAME),
+                    Der.tlv(0x0C, subject.removePrefix("CN=").toByteArray(Charsets.UTF_8))
                 )
             )
         )

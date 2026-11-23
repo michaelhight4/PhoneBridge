@@ -3,6 +3,49 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 11:45 — ds2 (deepseek/deepseek-flash) — task 02 relay: landed on `:core`
+
+**Done** (branch `pb/relay`, folder `relay/`):
+- Merged `main` (task 01) and removed the relay's temporary duplicates. The relay now uses the shared
+  `:core` types end to end: `RelayEnvelope`/`EnvelopeCodec`, `HelloAuth` (challenge proof),
+  `X25519`/`X25519KeyPair` (Bouncy Castle), `PeerIds`, `ShortCode`, `B64Url`, `Primitives`.
+  Deleted `relay/.../crypto/{X25519,Base32,Codec,PeerIdentity}.kt`, `relay/.../envelope/RelayEnvelope.kt`
+  and the Gson helper; the **Gson dependency is gone** (`:core` brings kotlinx-serialization +
+  Bouncy Castle as `api()` dependencies, so the relay adds no JSON/crypto library of its own).
+- `RelayClient` now takes a `:core` `Identity` (its role goes on the wire) and its callbacks hand out
+  `:core` `RelayEnvelope` values; `payload` stays the opaque base64url end-to-end frame.
+- Pairing codes are canonicalised with `ShortCode.normalise`/`format` (so O->0, I/L->1, separators and
+  case match `:core`); the mailbox stores the offer as a kotlinx `JsonObject` and releases it once. The
+  relay still does not enforce the CRC-5 check symbol (documented), so a mistyped code yields
+  `code_not_found` rather than a protocol error.
+- TLS: a client without a pin now verifies the **host name** as well as the chain (a pinned fingerprint
+  replaces it); `relay_pin` documented in `relay/PROTOCOL-RELAY.md` and shown in the README.
+- Fixed `docs/THIRD_PARTY.md`: `main` carried a committed merge conflict (`<<<<<<<` markers) in the
+  relay section. The file is rewritten with the relay's real dependency set (no Gson) and keeps the
+  core and Android sections.
+- `:relay:test` green: **33 tests**. Twelve tests were deleted because they duplicated `:core`'s
+  RFC 7748 / Crockford coverage; every relay acceptance test remains (two peers exchanging envelopes,
+  forged/unauthorised hello, `peer_offline`, rate limit, oversize drop incl. the 16 MiB default,
+  mailbox single-use/expiry, `relay_move` A->B with both peers following, token replay/expiry, TLS
+  pinning, wrong pin, host name verification, health endpoint).
+- `:relay:shadowJar` rebuilt and smoke-tested (wss, printed pin, `/healthz`, persisted cert + identity).
+
+**Left**
+- Nothing blocking. `relay/PROTOCOL-RELAY.md` is now descriptive: the message model and proof belong to
+  `:core` (`docs/PROTOCOL.md`); the relay adds only `relay_pin` (offer) and `token` (`relay_moved`).
+- Android wiring: the app should start the relay when the user picks "this phone" as the host and pass
+  a `dataDir` in app storage. Still pending an Android SDK for the APK build.
+- Not covered yet: presence events to other peers, sharing a routing table between relay instances, and
+  `relay_moved` for peers that are offline at hand-over time.
+
+**How to test**
+```bash
+gradlew.bat :relay:test                     # 33 in-process tests on loopback, no SDK needed
+gradlew.bat :relay:run --args="--port 8443" # standalone, wss + self-signed cert
+gradlew.bat :relay:shadowJar                # single-file jar for a VPS
+```
+
+**Blockers:** none. No `origin` remote exists, so there is nothing to push yet.
 
 ## 2026-11-23 12:41 -0600 - iceman (Iceman Contributor Free) - CI, security and release docs
 
@@ -92,15 +135,17 @@ what is left, how to build/test, blockers.
 
 ## 2026-11-23 11:14–11:35 — ds2 / deepseek/deepseek-flash — task 02 relay server (`:relay`)
 
-**Done (acceptance criteria met, `:relay:test` green: 44 tests)**
+**Done (acceptance criteria met, `:relay:test` green: 45 tests)**
 - Embeddable relay API in `dev.phonebridge.relay`: `Relay.start(RelayConfig): RelayHandle`, `stop()`,
   `moveTo(newUrl)`, `stats()`, `peers()`; per-connection `RelayClient` for devices, bots and tests.
 - Transport: hand-written RFC 6455 server + client (text frames, ping/pong, close, masking), so the
   relay has no heavy dependency and runs on Android API 26+ (see `docs/THIRD_PARTY.md` for why a
   library was not used and what Gson is used for).
 - TLS: PKCS#12 keystore or a self-signed P-256 certificate generated on first run and persisted
-  (`relay-cert.p12`), fingerprint exposed as base64url + hex for pinning, clients pin the fingerprint;
-  `--insecure-dev` / `insecureDev` allows plain `ws://` off loopback; loopback `ws://` is allowed.
+  (`relay-cert.p12`), fingerprint exposed as base64url + hex for pinning (`relay_pin` in a pairing
+  offer, documented in `relay/PROTOCOL-RELAY.md`), clients pin the fingerprint; a client without a pin
+  verifies the chain **and** the host name; `--insecure-dev` / `insecureDev` allows plain `ws://` off
+  loopback; loopback `ws://` is allowed.
 - Peer auth: relay `challenge` (nonce + per-connection X25519 ephemeral key) and `hello` with an
   `dh-hmac-sha256` proof of key ownership; `peer_id` must match the public key; replayed nonce, forged
   proof, all-zero key and spoofed `from` are all rejected.
@@ -121,9 +166,8 @@ what is left, how to build/test, blockers.
   Apache-2.0; RFC 6455 / RFC 7748 / X.509 implemented from specification).
 
 **Left / for the next lane**
-- `:core` still has no envelope/identity types (task 01 not merged at the time of writing). The relay
-  keeps a minimal `RelayEnvelope` + `RelayEnvelopeCodec` in `relay/.../envelope/` and forwards the raw
-  received text, so swapping in `:core` types is a one-line change at that seam.
+- **Resolved in the 11:45 entry above:** the relay now uses the `:core` envelope/identity types, so the
+  old placeholder types in `relay/.../envelope/` are gone.
 - **Identity details core must align with:** relay `peer_id` = Crockford base32 (lowercase, 26 chars)
   of the first 16 bytes of SHA-256(public key); fingerprint `ABCD-EFGH`. Relay `hello` proof is
   `HMAC-SHA256(X25519(peer_priv, relay_ephemeral_pub), "phonebridge/hello/v1|<relay_id>|<b64url(relay_pub)>|<peer_id>|<b64url(nonce)>")`.
@@ -144,7 +188,7 @@ what is left, how to build/test, blockers.
 
 **How to test**
 ```bash
-gradlew.bat :relay:test                                        # 44 in-process tests
+gradlew.bat :relay:test                                        # 45 in-process tests
 gradlew.bat :relay:run --args="--port 8443"                    # standalone, wss + self-signed cert
 gradlew.bat :relay:shadowJar                                   # single-file jar for a VPS
 java -jar relay/build/libs/phonebridge-relay-all.jar --help

@@ -1,11 +1,13 @@
 package dev.phonebridge.relay
 
+import dev.phonebridge.core.crypto.Primitives
+import dev.phonebridge.core.identity.Identity
+import dev.phonebridge.core.model.PeerRole
+import dev.phonebridge.core.model.RelayEnvelope
+import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.relay.client.RelayClient
 import dev.phonebridge.relay.client.RelayClientConfig
 import dev.phonebridge.relay.client.ReconnectPolicy
-import dev.phonebridge.relay.crypto.Codec
-import dev.phonebridge.relay.crypto.PeerKeyPair
-import dev.phonebridge.relay.envelope.RelayEnvelope
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,8 +26,7 @@ class RelayTlsTest {
     ): RelayClient = RelayClient(
         RelayClientConfig(
             url = relay.url,
-            identity = PeerKeyPair.generate(),
-            role = "bot",
+            identity = Identity.generate(PeerRole.BOT),
             tlsPin = tlsPin,
             insecureTls = insecureTls,
             reconnect = ReconnectPolicy(initialDelayMs = 50, maxDelayMs = 150, multiplier = 1.5, jitterMs = 0)
@@ -36,8 +37,8 @@ class RelayTlsTest {
     fun `a self-signed relay accepts peers that pin its fingerprint`() {
         val dir = tempDir()
         val relay = TestSupport.testRelay(tls = TlsConfig.selfSigned(dir), dataDir = dir)
-        val device = TestSupport.client(relay, role = "device")
-        val bot = TestSupport.client(relay, role = "bot")
+        val device = TestSupport.client(relay, Identity.generate(PeerRole.DEVICE))
+        val bot = TestSupport.client(relay)
         val atDevice = TestSupport.Collector<RelayEnvelope>()
         device.onRoute = { atDevice.add(it) }
         try {
@@ -50,7 +51,7 @@ class RelayTlsTest {
             assertTrue(device.awaitConnected(8000))
             assertTrue(bot.awaitConnected(8000))
 
-            bot.sendRoute(device.peerId, Codec.b64url(Codec.randomBytes(64)), id = "tls-1")
+            bot.sendRoute(device.peerId, B64Url.encode(Primitives.randomBytes(64)), id = "tls-1")
             assertEquals("tls-1", assertNotNull(atDevice.await()).id)
         } finally {
             device.stop()
@@ -63,7 +64,7 @@ class RelayTlsTest {
     fun `a wrong pinned fingerprint is rejected`() {
         val dir = tempDir()
         val relay = TestSupport.testRelay(tls = TlsConfig.selfSigned(dir), dataDir = dir)
-        val client = client(relay, tlsPin = Codec.b64url(Codec.randomBytes(32)))
+        val client = client(relay, tlsPin = B64Url.encode(Primitives.randomBytes(32)))
         try {
             client.start()
             assertFalse(client.awaitConnected(2500), "a peer with the wrong pin must not connect")
@@ -89,6 +90,56 @@ class RelayTlsTest {
     }
 
     @Test
+    fun `hostname verification is enforced unless the certificate is pinned`() {
+        val dir = tempDir()
+        val relay = TestSupport.testRelay(tls = TlsConfig.selfSigned(dir), dataDir = dir)
+        try {
+            val material = dev.phonebridge.relay.crypto.Tls.fromKeyStore(
+                java.io.File(dir, dev.phonebridge.relay.crypto.Tls.DEFAULT_KEYSTORE_FILE),
+                dev.phonebridge.relay.crypto.Tls.DEFAULT_PASSWORD
+            )
+            val trusting = trustOnly(material.certificate)
+
+            // A CA-style client (no pin) must check that the certificate matches the host name. The
+            // generated certificate has no SAN, so connecting to 127.0.0.1 by name must fail.
+            val mismatch = runCatching {
+                dev.phonebridge.relay.ws.WebSocketClient.connect(
+                    uri = java.net.URI(relay.url),
+                    sslContext = trusting,
+                    timeoutMs = 5000,
+                    maxMessageBytes = 64 * 1024,
+                    verifyHostname = true
+                )
+            }.exceptionOrNull()
+            assertTrue(mismatch is java.io.IOException, "expected a host name verification failure, got $mismatch")
+
+            // With verification off (pinned or development mode) the same certificate is accepted.
+            dev.phonebridge.relay.ws.WebSocketClient.connect(
+                uri = java.net.URI(relay.url),
+                sslContext = trusting,
+                timeoutMs = 5000,
+                maxMessageBytes = 64 * 1024,
+                verifyHostname = false
+            ).closeQuietly(1000, "test done")
+        } finally {
+            relay.stop()
+        }
+    }
+
+    private fun trustOnly(certificate: java.security.cert.X509Certificate): javax.net.ssl.SSLContext {
+        val store = java.security.KeyStore.getInstance("PKCS12")
+        store.load(null, null)
+        store.setCertificateEntry("relay", certificate)
+        val factory = javax.net.ssl.TrustManagerFactory.getInstance(
+            javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm()
+        )
+        factory.init(store)
+        return javax.net.ssl.SSLContext.getInstance("TLS").apply {
+            init(null, factory.trustManagers, java.security.SecureRandom())
+        }
+    }
+
+    @Test
     fun `the certificate fingerprint is stable across restarts`() {
         val dir = tempDir()
         val first = TestSupport.testRelay(tls = TlsConfig.selfSigned(dir), dataDir = dir)
@@ -100,7 +151,7 @@ class RelayTlsTest {
         try {
             assertEquals(firstPin, second.fingerprint)
             assertEquals(firstId, second.relayId, "the persisted relay identity should survive a restart")
-            assertNotEquals(null, second.fingerprintHex)
+            assertNotNull(second.fingerprintHex)
         } finally {
             second.stop()
         }
@@ -120,13 +171,13 @@ class RelayTlsTest {
     @Test
     fun `a client refuses plain ws to a non loopback host`() {
         val failure = runCatching {
-            RelayClientConfig(url = "ws://192.0.2.10:8443", identity = PeerKeyPair.generate()).validated()
+            RelayClientConfig(url = "ws://192.0.2.10:8443", identity = Identity.generate(PeerRole.BOT)).validated()
         }.exceptionOrNull()
         assertTrue(failure is IllegalArgumentException, "expected a rejection, got $failure")
 
         RelayClientConfig(
             url = "ws://192.0.2.10:8443",
-            identity = PeerKeyPair.generate(),
+            identity = Identity.generate(PeerRole.BOT),
             allowInsecureWs = true
         ).validated()
     }

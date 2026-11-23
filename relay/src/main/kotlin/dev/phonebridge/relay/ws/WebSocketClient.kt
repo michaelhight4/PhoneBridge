@@ -23,6 +23,7 @@ object WebSocketClient {
         timeoutMs: Int,
         maxMessageBytes: Int,
         idleTimeoutMs: Int = 120_000,
+        verifyHostname: Boolean = true,
         extraHeaders: Map<String, String> = emptyMap(),
         log: (String) -> Unit = {}
     ): WebSocketConnection {
@@ -44,6 +45,13 @@ object WebSocketClient {
             if (secure) {
                 val context = sslContext ?: SSLContext.getDefault()
                 val ssl = context.socketFactory.createSocket(socket, host, port, true) as SSLSocket
+                if (verifyHostname) {
+                    // With a CA-issued certificate the host name must match; a pinned fingerprint is
+                    // a stronger check than a host name and replaces it.
+                    val parameters = ssl.sslParameters
+                    parameters.endpointIdentificationAlgorithm = "HTTPS"
+                    ssl.sslParameters = parameters
+                }
                 ssl.startHandshake()
                 socket = ssl
             }

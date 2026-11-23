@@ -3,6 +3,32 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 12:15 — ds2 (deepseek/deepseek-flash) — relay: re-merged main, whole suite green
+
+**Done**
+- Merged `main` again (desktop agent, e2e harness, protocol schemas) into `pb/relay`. No conflicts.
+- Repo-wide `gradlew.bat test` is green, including the lanes that consume the relay:
+  - `:relay:test` — 33 tests;
+  - `:e2e:test` — 8 tests: a fake phone (`:core` + the Kotlin executor) and bot clients over a real
+    embedded relay, covering connect/auth, pairing mailboxes and commands end to end;
+  - `:desktop:test` — 66 tests, including `DesktopRelayIntegrationTest` (3) which starts the embedded
+    relay and drives it with real clients.
+- The desktop and e2e lanes already construct `RelayClientConfig(identity = :core Identity)`, so the
+  relay's core-based API needed no adjustment for them; their code merged onto it unchanged.
+
+**Left** — unchanged from the 11:45 entry below: Android wiring of "host the relay on this phone" is
+pending the SDK; presence events, a shared routing table between relays and `relay_moved` for peers
+that are offline at hand-over are still open.
+
+**How to test**
+```bash
+gradlew.bat test                    # every module (relay, core, desktop, e2e, executor, ui-core)
+gradlew.bat :relay:test             # relay only, 33 tests on loopback
+gradlew.bat :relay:run --args="--port 8443"
+```
+
+**Blockers:** none. No `origin` remote exists, so there is nothing to push yet.
+
 ## 2026-11-23 12:10 PM -0600 — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: v1 end-to-end integration — JVM fake-phone harness, integration fixes, `docs/QUICKSTART.md`
 (task 06), branch `pb/v1-integration`.

@@ -124,12 +124,14 @@ Commands:
   notifications                         Recent notifications
   tap <x> <y> | tap --node <id>         Tap coordinates or a UI node
   swipe <x1> <y1> <x2> <y2> [--ms N]    Swipe gesture
+  long-press <x> <y> [--ms N]           Long press
   type <text…>                          Type text into the focused field
   key <name>                            back|home|recents|notifications|quick_settings|lock|enter|power_dialog
   open-app <package>                    Launch an app by package (or --label NAME)
   install-apk <url> | --file <apk>      Install an APK (Full)
   shell -- <command>                    Run a shell command (Full)
   files <list|read|write|delete> <path> [--data-b64 DATA]   Files (Full)
+  settings <ns> <key> [value]           Read or write a system setting (Full)
   relay-move <this|peer_id|url>         Move the relay (Full)
   request-control                       Ask for the drive
   release-control                       Release the drive
@@ -263,6 +265,8 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
               2,
             )}\n`,
           );
+        } else if (flags.has("--json")) {
+          io.out(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
         } else {
           io.out(`${data}\n`);
         }
@@ -322,6 +326,39 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
               y2,
               ...(numberFlag(flags, "--ms") === undefined ? {} : { ms: numberFlag(flags, "--ms") }),
             },
+            requestOptions(device, timeoutMs),
+          ),
+          io,
+        );
+      }
+      case "long-press":
+      case "long_press": {
+        const [x, y] = positionalNumbers(parsed.positionals, 2, "long-press <x> <y>");
+        return printResult(
+          await client.request(
+            "long_press",
+            {
+              x,
+              y,
+              ...(numberFlag(flags, "--ms") === undefined ? {} : { ms: numberFlag(flags, "--ms") }),
+            },
+            requestOptions(device, timeoutMs),
+          ),
+          io,
+        );
+      }
+      case "settings": {
+        const [namespace, key, value] = parsed.positionals;
+        if (namespace === undefined || key === undefined) {
+          throw new PhoneBridgeError(
+            "bad_input",
+            "usage: phonebridge settings <system|secure|global> <key> [value]",
+          );
+        }
+        return printResult(
+          await client.request(
+            "settings",
+            { namespace, key, ...(value === undefined ? {} : { value }) },
             requestOptions(device, timeoutMs),
           ),
           io,

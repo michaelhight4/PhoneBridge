@@ -216,6 +216,15 @@ export class Keystore {
     this.dirty = true;
   }
 
+  /** Updates fields of one paired device without changing the current default device. */
+  patchDevice(peerId: string, patch: Partial<Omit<StoredDevice, "peerId">>): StoredDevice | undefined {
+    const device = this.data.devices.find((entry) => entry.peerId === peerId);
+    if (device === undefined) return undefined;
+    Object.assign(device, patch);
+    this.dirty = true;
+    return { ...device };
+  }
+
   /** Persists the keystore if anything changed. */
   async save(): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });

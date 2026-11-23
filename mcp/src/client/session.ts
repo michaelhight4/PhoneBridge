@@ -291,6 +291,7 @@ export class DeviceSession {
     this.unsubscribers.push(
       this.relay.onEnvelope((envelope) => this.handleEnvelope(envelope)),
       this.relay.onRelayError((envelope) => this.handleRelayError(envelope)),
+      this.relay.onRelayMoved((envelope) => this.handleRelayMoved(envelope)),
       this.relay.onClose(({ code, reason }) => {
         if (this.state === "closed") return;
         this.state = "closed";
@@ -495,6 +496,22 @@ export class DeviceSession {
       return;
     }
     this.pushError(new PhoneBridgeError("relay_error", envelope.message ?? `relay error: ${code}`));
+  }
+
+  /** The relay moved ("the heart" changed host): remember the new URL and tell listeners. */
+  private handleRelayMoved(envelope: Envelope): void {
+    if (typeof envelope.new_url !== "string" || envelope.new_url.trim() === "") return;
+    this.device.relayUrl = envelope.new_url;
+    const event: DeviceEvent = {
+      event: "relay_moved",
+      data: {
+        new_url: envelope.new_url,
+        token: envelope.token,
+        expires: envelope.expires,
+      },
+    };
+    this.lastEvent = event;
+    for (const handler of this.eventHandlers) handler(event);
   }
 
   private pushError(error: PhoneBridgeError): void {

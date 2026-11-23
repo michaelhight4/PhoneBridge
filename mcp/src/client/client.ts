@@ -217,6 +217,14 @@ export class PhoneBridgeClient {
   private replaceSession(session: DeviceSession): void {
     if (this.session !== undefined && this.session !== session) this.session.close("replaced");
     this.session = session;
+    session.onEvent((event) => {
+      if (event.event !== "relay_moved") return;
+      const data = event.data as Record<string, unknown> | undefined;
+      const newUrl = typeof data?.["new_url"] === "string" ? data["new_url"] : undefined;
+      if (newUrl === undefined) return;
+      this.keystore.patchDevice(session.device.peerId, { relayUrl: newUrl });
+      void this.keystore.flush();
+    });
     session.onClose(() => {
       if (this.session === session) this.session = undefined;
     });

@@ -166,8 +166,23 @@ describe("pairing and sessions over a mock relay", () => {
     expect(wireBytes).toBeGreaterThan(MAX_CHUNK_BYTES);
   });
 
-  it("delivers device events to listeners", async () => {
-    const { client, device } = (setupResult = await setup());
+  it("records a relay_moved announcement and exposes it as an event", async () => {
+    const { client, relay } = (setupResult = await setup());
+    const session = await client.connect();
+    const events: string[] = [];
+    session.onEvent((event) => events.push(event.event));
+    relay.broadcast({
+      type: "relay_moved",
+      new_url: "wss://relay2.example.test:8765",
+      token: "one-time",
+      expires: 1_900_000_000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(events).toContain("relay_moved");
+    expect(client.devices()[0]?.relayUrl).toBe("wss://relay2.example.test:8765");
+  });
+
+  it("delivers device events to listeners", async () => {    const { client, device } = (setupResult = await setup());
     const session = await client.connect();
     const events: Array<{ event: string; data: unknown }> = [];
     session.onEvent((event) => events.push(event));

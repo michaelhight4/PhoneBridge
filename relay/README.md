@@ -54,6 +54,11 @@ variable; secrets are never printed). With a CA-issued certificate the client ve
 and the host name; with `relay_pin` it verifies the certificate fingerprint instead (the generated
 certificate has no subject alternative name, which is why it is pinned rather than host-name checked).
 
+If the data directory cannot be written (a read-only host, or an app directory the phone refuses), the
+relay still starts and serves TLS, but the self-signed certificate cannot be kept: the printed
+fingerprint changes after every restart and peers have to re-pin it. `RelayHandle` does not hide this:
+the startup log says so, and a corrupt keystore is replaced rather than blocking the relay.
+
 ## Embedding
 
 ```kotlin

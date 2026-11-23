@@ -4,7 +4,9 @@ import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class TlsTest {
@@ -44,5 +46,32 @@ class TlsTest {
         val pin = "abc-def_ghi"
         assertEquals("abc-def_ghi", Tls.normalizePin(" $pin "))
         assertEquals("abcd", Tls.normalizePin("abcd=="))
+    }
+
+    @Test
+    fun `an unwritable certificate location still yields working TLS material`() {
+        val root = Files.createTempDirectory("pb-tls-unwritable").toFile()
+        // A regular file where the keystore's parent directory would be: the write must fail.
+        val blocker = File(root, "blocker").apply { writeText("x") }
+        val material = Tls.loadOrCreateSelfSigned(File(blocker, "relay-cert.p12"))
+
+        assertFalse(material.persisted, "a failed write must be reported instead of throwing")
+        assertNotNull(material.sslContext)
+        assertEquals(43, material.fingerprint.length)
+        assertEquals(material.fingerprint, Tls.fingerprint(material.certificate))
+    }
+
+    @Test
+    fun `a corrupt keystore is replaced`() {
+        val dir = Files.createTempDirectory("pb-tls-corrupt").toFile()
+        val store = File(dir, Tls.DEFAULT_KEYSTORE_FILE).apply { writeText("this is not a keystore") }
+
+        val material = Tls.loadOrCreateSelfSigned(store)
+        assertTrue(material.persisted)
+        assertEquals(
+            material.fingerprint,
+            Tls.fromKeyStore(store, Tls.DEFAULT_PASSWORD).fingerprint,
+            "the replacement keystore must be readable"
+        )
     }
 }

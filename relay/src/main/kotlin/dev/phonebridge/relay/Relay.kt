@@ -566,12 +566,19 @@ internal class RelayServer private constructor(
                 Tls.fromKeyStore(file, password, tls.keyAlias)
             } else {
                 val dir = File(tls.certDir ?: config.dataDirectory().path)
-                Tls.loadOrCreateSelfSigned(
+                val material = Tls.loadOrCreateSelfSigned(
                     file = File(dir, Tls.DEFAULT_KEYSTORE_FILE),
                     password = password,
                     alias = tls.keyAlias,
                     subject = tls.subject
                 )
+                if (!material.persisted) {
+                    config.log(
+                        "warning: the TLS certificate could not be written to $dir; " +
+                            "peers must re-pin the printed fingerprint after every restart"
+                    )
+                }
+                material
             }
         }
 

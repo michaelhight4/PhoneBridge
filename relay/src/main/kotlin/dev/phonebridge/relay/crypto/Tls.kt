@@ -43,7 +43,13 @@ object Tls {
         /** base64url SHA-256 of the DER certificate: the value pairing offers pin. */
         val fingerprint: String,
         /** Colon separated uppercase hex of the same digest, for humans. */
-        val fingerprintHex: String
+        val fingerprintHex: String,
+        /**
+         * False when the certificate could not be written to disk (for example a read-only app
+         * directory on a phone). TLS still works, but the fingerprint changes when the relay restarts,
+         * so peers have to re-pin it.
+         */
+        val persisted: Boolean = true
     )
 
     fun fingerprint(certificate: X509Certificate): String =
@@ -53,8 +59,12 @@ object Tls {
         Primitives.toHex(Primitives.sha256(certificate.encoded)).uppercase().chunked(2).joinToString(":")
 
     /**
-     * Loads [file] when it exists, otherwise generates a new self-signed key pair and certificate,
-     * stores it in a PKCS#12 keystore at [file] and returns the server context.
+     * Loads [file] when it exists and parses, otherwise generates a new self-signed key pair and
+     * certificate, stores it in a PKCS#12 keystore at [file] and returns the server context.
+     *
+     * A corrupt keystore is replaced, and a location that cannot be written (some Android app
+     * directories, a read-only host) still yields working in-memory material with
+     * [Material.persisted] false, so the relay can serve instead of refusing to start.
      */
     fun loadOrCreateSelfSigned(
         file: File,
@@ -63,9 +73,16 @@ object Tls {
         subject: String = "CN=PhoneBridge Relay"
     ): Material {
         if (file.exists()) {
-            return fromKeyStore(file, password, alias)
+            try {
+                return fromKeyStore(file, password, alias)
+            } catch (_: Exception) {
+                // Unreadable or corrupt: fall through and generate a fresh certificate.
+            }
         }
-        file.parentFile?.mkdirs()
+        try {
+            file.parentFile?.mkdirs()
+        } catch (_: Exception) {
+        }
         val keyPair = KeyPairGenerator.getInstance("EC").apply {
             initialize(ECGenParameterSpec("secp256r1"), SecureRandom())
         }.generateKeyPair()
@@ -82,10 +99,15 @@ object Tls {
         val store = KeyStore.getInstance("PKCS12")
         store.load(null, password)
         store.setKeyEntry(alias, keyPair.private, password, arrayOf(certificate))
-        file.outputStream().use { store.store(it, password) }
-        restrictPermissions(file)
+        val persisted = try {
+            file.outputStream().use { store.store(it, password) }
+            restrictPermissions(file)
+            true
+        } catch (_: Exception) {
+            false
+        }
 
-        return material(certificate, aliasKeyManager(store, password))
+        return material(certificate, aliasKeyManager(store, password), persisted)
     }
 
     fun fromKeyStore(file: File, password: CharArray, alias: String = DEFAULT_ALIAS): Material {
@@ -98,11 +120,18 @@ object Tls {
 
     private fun material(
         certificate: X509Certificate,
-        keyManagers: Array<javax.net.ssl.KeyManager>
+        keyManagers: Array<javax.net.ssl.KeyManager>,
+        persisted: Boolean = true
     ): Material {
         val context = SSLContext.getInstance("TLS")
         context.init(keyManagers, null, SecureRandom())
-        return Material(context, certificate, fingerprint(certificate), fingerprintHex(certificate))
+        return Material(
+            sslContext = context,
+            certificate = certificate,
+            fingerprint = fingerprint(certificate),
+            fingerprintHex = fingerprintHex(certificate),
+            persisted = persisted
+        )
     }
 
     private fun aliasKeyManager(store: KeyStore, password: CharArray): Array<javax.net.ssl.KeyManager> {

@@ -79,9 +79,10 @@ what is left, how to build/test, blockers.
 **Done**
 - Merged `main` again (desktop agent, e2e harness, protocol schemas) into `pb/relay`. No conflicts.
 - Repo-wide `gradlew.bat test` is green, including the lanes that consume the relay:
-  - `:relay:test` — 39 tests (added six relay-specific ones: a second connection replaces the first and
+  - `:relay:test` - 41 tests (added eight relay-specific ones: a second connection replaces the first and
     routing follows the newest, a second `hello` is rejected, mailbox oversize/full limits, move-token
-    binding and expiry, secret decoding, identity + certificate stability across restarts);
+    binding and expiry, secret decoding, identity + certificate stability across restarts, and TLS
+    degrading gracefully when the certificate cannot be written to disk);
   - `:e2e:test` — 8 tests: a fake phone (`:core` + the Kotlin executor) and bot clients over a real
     embedded relay, covering connect/auth, pairing mailboxes and commands end to end;
   - `:desktop:test` — 66 tests, including `DesktopRelayIntegrationTest` (3) which starts the embedded
@@ -96,7 +97,7 @@ that are offline at hand-over are still open.
 **How to test**
 ```bash
 gradlew.bat test                    # every module (relay, core, desktop, e2e, executor, ui-core)
-gradlew.bat :relay:test             # relay only, 39 tests on loopback
+gradlew.bat :relay:test             # relay only, 41 tests on loopback
 gradlew.bat :relay:run --args="--port 8443"
 ```
 

@@ -4,7 +4,7 @@ One line per claimed task: `lane | task | branch | claimed (America/Chicago) | s
 
 - bigpickle | 05 MCP server, CLI, bot client and API docs (`mcp/`, `docs/API.md`) | `pb/mcp-server-cli` | 2026-11-23 11:20 | done (57 tests green, aligned to `core/` Noise XX, verified against the real relay)
 - ds1 | 01 protocol, crypto and pairing library (`core/`, `docs/PROTOCOL.md`) | `pb/protocol-pairing` | 2026-11-23 11:14 | done (111 core tests pass; relay wire contract aligned)
-- ds2 | 02 relay server | pb/relay | 2026-11-23 11:14 | done (39 tests green on :core, merged to main)
+- ds2 | 02 relay server | pb/relay | 2026-11-23 11:14 | done (41 tests green on :core, merged to main)
 - ds3 | android app skeleton + accessibility service + command executor (`android/`) | pb/android-accessibility | 2026-11-23 11:15 AM | done (JVM tests green, 74 tests; APK build pending Android SDK)
 - ds1 | Shizuku integration: permission flow, install_apk, settings, shell, files (`android/`) | pb/android-shizuku | 2026-11-23 11:40 AM | done (132 executor-core JVM tests pass; APK build pending Android SDK)
 - iceman | JSON Schemas, conformance tests, mock device (protocol/, tests/, docs/TESTING.md) | pb/schemas-mock-device-tests | 2026-11-23 11:16 -0600 | done

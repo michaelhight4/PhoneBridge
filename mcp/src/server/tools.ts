@@ -9,6 +9,7 @@ import { z } from "zod";
 import { PhoneBridgeClient } from "../client/client.js";
 import { PhoneBridgeError, isPhoneBridgeError } from "../client/errors.js";
 import { PERMISSION_LEVELS, type PermissionLevel } from "../client/keystore.js";
+import { fromBase64Loose, toBase64Std, toBase64Url } from "../client/bytes.js";
 
 export const TOOL_NAMES = [
   "pb_pair",
@@ -193,16 +194,17 @@ export function registerPhoneBridgeTools(server: McpServer, context: ToolContext
           throw new PhoneBridgeError("internal", "device returned a screenshot without data_b64");
         }
         const mime = typeof result["mime"] === "string" ? result["mime"] : "image/png";
+        const standard = toBase64Std(data);
         const meta = {
           mime,
           width: result["width"],
           height: result["height"],
-          bytes: Buffer.from(data, "base64").length,
+          bytes: fromBase64Loose(data).length,
         };
         return {
           content: [
             { type: "text" as const, text: JSON.stringify({ ok: true, ...meta }, null, 2) },
-            { type: "image" as const, data, mimeType: mime },
+            { type: "image" as const, data: standard, mimeType: mime },
           ],
         };
       } catch (error) {
@@ -378,7 +380,9 @@ export function registerPhoneBridgeTools(server: McpServer, context: ToolContext
         "install_apk",
         {
           ...(args.url === undefined ? {} : { url: args.url }),
-          ...(args.data_b64 === undefined ? {} : { data_b64: args.data_b64 }),
+          ...(args.data_b64 === undefined
+            ? {}
+            : { data_b64: toBase64Url(fromBase64Loose(args.data_b64)) }),
           ...(args.name === undefined ? {} : { name: args.name }),
         },
         args.device,
@@ -426,7 +430,7 @@ export function registerPhoneBridgeTools(server: McpServer, context: ToolContext
         {
           op: args.op,
           path: args.path,
-          ...(args.data_b64 === undefined ? {} : { data_b64: args.data_b64 }),
+          ...(args.data_b64 === undefined ? {} : { data_b64: toBase64Url(fromBase64Loose(args.data_b64)) }),
         },
         args.device,
       ),

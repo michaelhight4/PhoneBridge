@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "relay": "wss://host:8443",
+  "device_id": "abcdefghijklmnopqrstuvwx23",
+  "device_pub": "QUJDRA==",
+  "secret": "c2VjcmV0c2VjcmV0c2VjcmV0c2VjcmV0c2VjcmV0c2VjcmV0",
+  "code": "7K4-Q9M",
+  "exp": 1790000000
+}

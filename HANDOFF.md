@@ -3,57 +3,64 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
-## 2026-11-23 11:46 — bigpickle lane (deepseek-v4.1-flash) — task 05: MCP server, CLI, bot client, API docs
+## 2026-11-23 12:16 — bigpickle lane (deepseek-v4.1-flash) — task 05: MCP server, CLI, bot client, API docs
 
-- Branch `pb/mcp-server-cli`, folders `mcp/` (+ `docs/API.md`, `docs/THIRD_PARTY.md`, CLAIMS/HANDOFF).
-  Everything else was left alone.
+- Branch `pb/mcp-server-cli`, folders `mcp/` (+ `docs/API.md`, the `mcp/` section of
+  `docs/THIRD_PARTY.md`, CLAIMS/HANDOFF). Nothing else was touched.
 - **Done**
   - `mcp/` TypeScript package (strict, Node 20+, ESM): client library, MCP server, `phonebridge` CLI,
-    54 vitest tests, `package-lock.json` for `npm ci`. `node_modules/` and `dist/` are gitignored.
-  - Client (`mcp/src/client`): pairing-input parser (short code, `phonebridge://` link, `.pbpair` file,
-    raw/wrapped offer JSON, expiry + `device_id` hash check), JSON keystore in `~/.phonebridge`
-    (`$PHONEBRIDGE_HOME`/`--home` override), X25519 handshake, XChaCha20-Poly1305 frames with per
-    direction counters and 32 KiB chunking, relay WebSocket with cert fingerprint pinning, request/
-    response correlation by UUID, per-command timeouts, events, permission-level checks, relay_moved.
-  - MCP server: stdio by default, optional streamable HTTP (`--http <port>`, loopback only). Tools:
-    `pb_pair, pb_devices, pb_status, pb_screenshot (MCP image, chunk-safe), pb_ui_tree, pb_notifications,
-    pb_tap, pb_swipe, pb_type, pb_key, pb_open_app, pb_install_apk, pb_shell, pb_files, pb_relay_move,
-    pb_request_control, pb_release_control` (17; `pb_notifications` is the one extra beyond the task list
-    because it is a documented View command).
-  - CLI: every command (`pair, devices, status, screenshot -o, ui-tree, notifications, tap, long-press,
-    swipe, type, key, open-app, install-apk, shell --, files, settings, relay-move, request-control,
-    release-control`), global `--device/--home/--relay/--level/--name/--timeout/--json/--insecure-dev`,
-    exit codes 0/1/2. Shebang added so the npm bin works on Unix too.
-  - `docs/API.md`: JSON API with examples for every command, pairing forms, levels, events, error-code
-    table, MCP config snippets for OpenCode V2 (`mcp.servers`), Claude Desktop, Claude Code, generic
-    client, CLI reference, library usage. `mcp/README.md` covers build/architecture.
-- **Protocol concretization (for :core and relay lanes — please align)**
-  - `peer_id` = Crockford base32 (lowercase, unpadded) of `SHA-256(publicKey)[0..16)`; fingerprint =
-    first 8 symbols uppercased as `ABCD-EFGH`.
-  - Pairing codes: 5 Crockford data symbols + checksum symbol `(v0+…+v4) mod 32`, written `XXX-XXX`
-    (a valid example is `7K4-Q9Y`; the docs' `7K4-Q9M` is shape only and fails the checksum by design).
-  - Handshake `hs1`/`hs2`/`hs3`/`hs4` exactly as in `mcp/test/vectors/handshake-v1.json`:
-    dh1..dh4, `th = SHA-256(domain||flags||e_b||n_b||s_b||e_d||n_d||s_d||SHA-256(secret))`,
-    `okm = BLAKE2b-512(key=th) over dh1..dh4`, keys split 0..32/32..64. AEAD = XChaCha20-Poly1305 IETF,
-    AAD `PhoneBridge/v1/data`, nonce = 16 zero bytes + BE64 counter; hs3/hs4 use counter 0, data 1+.
-  - Relay auth: `hello` → `hello_challenge` (a 32-byte X25519 **public key**) → `hello_proof` =
-    `X25519(peer secret, challenge)` → `hello_ok`. The relay verifies with
-    `X25519(challenge secret, peer pub)`. The relay may also answer `hello` directly with `hello_ok`.
-  - `pair_lookup {code}` → `pair_offer {payload: b64url(offer JSON)}` or `error {code:"bad_code"}`;
-    `pair_request` rides the normal request/response frame with `requested_level`; `pair_result` may be
-    bare (`{ok,granted_level,device_name}`) or a normal `{id,ok,result}` response.
-  - Offer extension: optional `relay_fp` (SHA-256 of the relay cert DER, hex) pins TLS.
-  - Messages over 32 KiB are chunked inside the encryption as
-    `{t:"chunk",cid,i,n,d}` (base64url slices); reassembly capped at 24 MiB.
+    57 vitest tests, `package-lock.json` for `npm ci`. `node_modules/` and `dist/` stay gitignored.
+  - **Aligned to the merged `core/` protocol, not the old draft.** The first pass implemented a
+    placeholder X25519+BLAKE2b handshake because `docs/PROTOCOL.md` was still a draft; after merging
+    `main` this lane rewrote the crypto/client layers to the real protocol:
+    - `Noise_XX_25519_ChaChaPoly_SHA256` (prologue `PhoneBridge/1/noise-xx`, pattern `e / e,ee,s,es /
+      s,se`), `0x01`/`0x02` frame tags, per-direction keys, little-endian counters, empty AAD, 8 MiB cap.
+    - Pairing **before** Noise: `pair_request`/`pair_result` sealed with
+      `HKDF-SHA256(secret, "PhoneBridge/1/pairing", "pair-frame")` + ChaCha20-Poly1305, AAD bound to
+      direction and `device_pub`; then Noise with the device static key pinned from the offer.
+    - Relay `challenge → hello (dh-hmac-sha256) → hello_ok`, nested `error{code,message}`, `ping/pong`,
+      `relay_moved`, short-code mailbox (`pair_store`/`pair_lookup`/`pair_offer`) and `relay_pin` TLS
+      pinning.
+    - Crockford `peer_id`/fingerprint, CRC-5 short codes (`7K4Q9 → 7K4-Q9B`), liberal base64/base64url
+      decoding, protocol `chunk` events (256 KiB slices, SHA-256 verified, 64 MiB cap) with the client
+      waiting for chunks and attaching `data_b64` to the announcing result.
+  - **Client** (`mcp/src/client`): pairing-input parser (code/link/file/JSON, expiry, `device_pid`
+    hash check, `relay_pin`), JSON keystore in `~/.phonebridge` (`$PHONEBRIDGE_HOME`/`--home` override),
+    Noise sessions, request correlation by UUID, per-command timeouts, events, level checks,
+    `relay_moved` handling that updates the stored relay URL.
+  - **MCP server**: stdio by default, optional streamable HTTP (`--http <port>`, loopback only). Tools:
+    `pb_pair, pb_devices, pb_status, pb_screenshot (MCP image), pb_ui_tree, pb_notifications, pb_tap,
+    pb_swipe, pb_type, pb_key, pb_open_app, pb_install_apk, pb_shell, pb_files, pb_relay_move,
+    pb_request_control, pb_release_control` (17; `pb_notifications` is the one extra beyond the task
+    list because it is a documented View command).
+  - **CLI**: every command (`pair, devices, status, screenshot -o, ui-tree, notifications, tap,
+    long-press, swipe, type, key, open-app, install-apk, shell --, files, settings, relay-move,
+    request-control, release-control`), global `--device/--home/--relay/--level/--name/--timeout/--json/
+    --insecure-dev`, exit codes 0/1/2, shebang so the npm bin works on Unix too.
+  - **`docs/API.md`**: every command with JSON examples, pairing forms, levels, events, error-code
+    table, MCP configs for OpenCode V2 (`mcp.servers`), Claude Desktop, Claude Code and a generic
+    client, CLI reference, chunking and library API. `mcp/README.md` and
+    `mcp/test/vectors/README.md` document the build and the vector contract.
+  - **Vectors** (`mcp/test/vectors/handshake-v1.json`, regenerated by `mcp/scripts/gen-vectors.mjs`):
+    identities, `00..1f → cc6wtab6rgspd48jah4bqcjv9w`, CRC-5 examples, relay hello proof, pairing key +
+    sealed request/result, Noise `hs1`/`hs2`/`hs3` (33/97/65 bytes), handshake hash, first transport
+    frames in both directions, chunk set and the RFC 5869 HKDF vector.
+- **Interop verified against the real Kotlin relay** (not just mocks). Built with
+  `gradlew.bat :relay:installDist`, ran
+  `phonebridge-relay.bat --port 8787 --bind 127.0.0.1 --no-tls --data-dir …`, then used the
+  protocol-faithful mock device: link pairing, short-code pairing through the relay mailbox, Noise
+  handshake, `status`/`ui_tree` round-trips and an event all worked. This validates the `dh-hmac-sha256`
+  hello proof, envelope shapes and the pairing mailbox against `:relay`/`:core`.
 - **Left / next**
-  - Real-device testing needs the Android app (`pb/android-accessibility`) and the relay
-    (`pb/relay`). Against the in-process mock relay+device everything passes, but nothing has been run
-    against a real APK or a real relay yet, so `peer_offline`/`bad_proof` interop is unverified.
-  - No live TLS relay was available, so cert pinning is only unit-covered via `normalizeFingerprint`
-    and code review; add an integration test once the relay lane serves `wss://`.
-  - Not done on purpose: auto-reconnect with backoff (the client reconnects on the next call instead),
-    streaming `screenshot` frames to disk, `notifications` push into MCP (events are exposed through the
-    library and the next tool call).
+  - Real Android device testing needs the APK (`pb/android-accessibility`, `pb/android-service-pairing-ui`)
+    and an Android SDK; that is the only unverified half of the wire (the device side is exercised by the
+    mock).
+  - TLS `relay_pin` pinning is unit-covered (`decodePin`, offer validation) and wired through
+    `tls.checkServerIdentity`, but the interop relay ran plain `ws://` on loopback, so no live
+    `wss://` pin check yet.
+  - Not implemented on purpose: automatic reconnect with backoff (the client re-opens on the next call
+    instead), request-side chunking for inline APKs above 8 MiB (use a URL), and push-style delivery of
+    device events into MCP (events are exposed by the library and through subsequent calls).
 - **How to test**
   ```sh
   cd mcp && npm ci && npm run build && npm test && npm run typecheck
@@ -61,10 +68,666 @@ what is left, how to build/test, blockers.
   node dist/server/index.js --http 8765         # streamable HTTP at /mcp
   node dist/cli/index.js --help
   ```
-  Verified here: fresh `npm ci && npm run build && npm test` green (54 tests), real stdio and HTTP MCP
-  clients list 17 tools, CLI devices/status/help behave.
-- **Blockers**: none for merging. Cross-lane follow-ups are the relay hello-proof shape and the Android
-  device implementation; both are documented above and in `docs/API.md`.
+  Verified here: fresh `npm ci && npm run build && npm test` green (57 tests), real stdio and HTTP MCP
+  clients list 17 tools, CLI devices/status/help behave, and the real relay interop described above.
+- **Blockers**: none for merging. The remaining risk is only the Android APK side (SDK missing).
+
+
+## 2026-11-23 — setup (Grok Bot)
+- Repo scaffolded: docs/SPEC.md, docs/PROTOCOL.md, docs/BOT_WORKFLOW.md, Gradle wrapper (9.2.1) with
+  `core` and `relay` JVM modules (empty), folders android/, mcp/, desktop/.
+- Toolchain on this PC: JDK 25 (Temurin), Node, Git. **No Android SDK** (no ANDROID_HOME, no
+  %LOCALAPPDATA%\Android\Sdk), no global Gradle (use `gradlew.bat`). Android modules are included in
+  `settings.gradle.kts` only when an SDK is found; until then write the Android code and keep
+  JVM-testable logic in plain Kotlin classes with JVM unit tests.
+- No GitHub remote yet (gh not logged in). Push steps are skipped until `origin` exists.
+
+## 2026-11-23 12:15 — ds2 (deepseek/deepseek-flash) — relay: re-merged main, whole suite green
+
+**Done**
+- Merged `main` again (desktop agent, e2e harness, protocol schemas) into `pb/relay`. No conflicts.
+- Repo-wide `gradlew.bat test` is green, including the lanes that consume the relay:
+  - `:relay:test` — 33 tests;
+  - `:e2e:test` — 8 tests: a fake phone (`:core` + the Kotlin executor) and bot clients over a real
+    embedded relay, covering connect/auth, pairing mailboxes and commands end to end;
+  - `:desktop:test` — 66 tests, including `DesktopRelayIntegrationTest` (3) which starts the embedded
+    relay and drives it with real clients.
+- The desktop and e2e lanes already construct `RelayClientConfig(identity = :core Identity)`, so the
+  relay's core-based API needed no adjustment for them; their code merged onto it unchanged.
+
+**Left** — unchanged from the 11:45 entry below: Android wiring of "host the relay on this phone" is
+pending the SDK; presence events, a shared routing table between relays and `relay_moved` for peers
+that are offline at hand-over are still open.
+
+**How to test**
+```bash
+gradlew.bat test                    # every module (relay, core, desktop, e2e, executor, ui-core)
+gradlew.bat :relay:test             # relay only, 33 tests on loopback
+gradlew.bat :relay:run --args="--port 8443"
+```
+
+**Blockers:** none. No `origin` remote exists, so there is nothing to push yet.
+
+## 2026-11-23 12:10 PM -0600 — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
+Task: v1 end-to-end integration — JVM fake-phone harness, integration fixes, `docs/QUICKSTART.md`
+(task 06), branch `pb/v1-integration`.
+
+**Done**
+- **New `:e2e` module (`tests/e2e`)**: a fake phone built from the real code — `:core` (protocol,
+  Noise `XX`, pairing, bot registry, control arbiter), `:relay` (server + client, TLS, mailbox, move
+  tokens), `:android:executor-core` (command table, permissions, args, UI-tree ids) and
+  `:android:ui-core` (`SessionHandler`, `ApprovalController`, `BridgeState`, `ActivityLog`). Only
+  `DeviceControl` is faked (`FakePhoneDevice`), plus the Shizuku-backed Full commands.
+- **Acceptance run: `gradlew.bat :e2e:test`** — 8 tests, about a second, green. It pairs a bot by
+  **short code** (over the real pinned TLS relay), by **link** and by **`.pbpair` file**, then runs
+  `status`, `screenshot` (png + jpeg), `ui_tree`, `tap` (coordinates and `node_id`), `swipe`, `type`
+  (including non-ASCII text), `key`, `open_app` (package and label), `notifications`, `bad_args`,
+  `unknown_cmd`, a **View-level permission denial** (nothing reaches the device), a Full command
+  without Shizuku, **control queueing between two bots** (position event, `busy`, `not_controller`,
+  promotion on release, `control_changed`, notification text), **Kick everyone** (sealed `kicked`,
+  paired keys survive, re-handshake works) and **`relay_move` between two relays** (both peers follow,
+  the Noise session keeps working, relay A drains).
+- **`gradlew.bat :e2e:runFakePhone`**: manual target for any external bot (MCP server/CLI, a script).
+  Starts a relay + fake phone, prints relay URL, cert pin, short code, pairing link and `.pbpair` path,
+  auto-approves pairing at Control. Press Enter to stop.
+- **`docs/QUICKSTART.md`**: install the APK, enable accessibility, choose the heart host (PC / phone /
+  VPS), pair a bot, MCP config snippet, JSON API examples, troubleshooting, and the one command that
+  runs the whole suite. `README`, `docs/TESTING.md`, `tests/e2e/README.md` and CI updated.
+
+**Integration bugs fixed (each one has a test)**
+1. **The relay certificate pin never reached the bot.** `relay/PROTOCOL-RELAY.md` documents an optional
+   `relay_pin` in the pairing offer, but `core`'s `PairingOffer` silently dropped it, so a bot could
+   never reach a self-signed relay (the default when the heart runs on a PC or the phone). Added an
+   optional `relay_pin` (model + `PairingManager.createOffer` + validation + `docs/PROTOCOL.md` 5.1),
+   and the app now puts the embedded relay's pin in the offer (`BridgeController.createOffer`).
+2. **Executor argument defaults contradicted the protocol.** `ui_tree` defaulted `visible_only` to
+   false (PROTOCOL 6.1: true) and accepted `max_depth` 0 (1..1000); `screenshot.max_width` accepted
+   1..100000 (16..16384). Aligned, executor tests updated.
+3. **Queued bots were told `not_controller`.** PROTOCOL 7 and SPEC 4 say a queued bot gets `busy` with
+   its position. The executor now answers `busy` ("queued at position n") when the bot is waiting and
+   `not_controller` only when it never asked. Tests in both `:android:executor-core` and `:e2e`.
+4. **The published JSON Schemas could not validate real messages.** The peer-id pattern `[a-z2-7]`
+   rejected every real Crockford id; padded-base64 patterns rejected base64url; the envelope schema
+   knew 6 of 12 envelope types and omitted `hello.nonce`/`move_token`; `pair_request`/`pair_result`
+   lacked `v`/`bot_id`/`device_id`; `status` typed `device`/`battery`/`shizuku` as objects and queue
+   entries as objects; `screenshot` required `data_b64` (the chunked form was rejected). All fixed;
+   the envelope schema now covers `challenge`, `hello`, `hello_ok`, `route`, `ping`, `pong`, `error`,
+   `relay_moved`, `pair_store`, `pair_stored`, `pair_lookup`, `pair_offer` and `$ref`s the offer.
+   `:e2e:test` now writes **real** messages to `build/protocol-samples`, so `tests/conformance`
+   validates genuine output (193 tests, 7 real samples) — run the two commands in that order.
+5. **The JSON stores were not Android 8 safe and could fail on Windows.** `JsonFileBotRegistry`,
+   `JsonFileActivityLog` and `RelaySettingsStore` used Java-11 `Files.readString`/`writeString`
+   (Android 13+) although minSdk is 26, and the temp-file rename could throw `AccessDeniedException`
+   on Windows (seen once as a flaky `:core:test`). They now use byte IO and a shared
+   `core.util.AtomicFiles.replace` that retries briefly and falls back to a non-atomic move.
+6. **Full-level commands did not need control.** `core`'s `CommandType.needsControl` (and PROTOCOL 7)
+   say every command that acts on the device needs control, but the executor let `shell`, `files`,
+   `settings`, `install_apk` and `relay_move` through without it. ds1's Shizuku lane aligned the
+   executor table in the same merge; PROTOCOL 7 now states it explicitly and the e2e covers both the
+   `not_controller` and `shizuku_unavailable` paths.
+
+**Left / next**
+- **MCP server/CLI (task 05) is not on `main`, so that acceptance leg is blocked.** The branch
+  `pb/mcp-server-cli` is based on the initial scaffold and implements its own handshake (X25519
+  `hs1`..`hs4` + BLAKE2b-512 key schedule, and a one-pass DH relay proof) instead of the merged
+  Noise `XX` + `DH-HMAC-SHA256` hello, so it cannot pair with `:core` today. It needs a rebase onto
+  `:core` (rewrite `mcp/src/client/handshake.ts` + `crypto.ts`, reuse its own `relay.ts` framing).
+  The harness side is ready: point it at `:e2e:runFakePhone`, or add a Node test that reuses the same
+  relay + fake phone. `docs/API.md` only exists on that branch; QUICKSTART marks the MCP snippet
+  "not in `main` yet".
+- APK build still pending an Android SDK (not installed here on purpose).
+- Chunked screenshots (over 8 MiB) are not exercised end to end; MediaProjection, the
+  NotificationListener and Shizuku remain faked in the harness; `tests/mock-device` still speaks
+  plaintext dev payloads.
+
+**How to test**
+```
+gradlew.bat :e2e:test            # the v1 acceptance run (about 1 s, no SDK, no phone)
+gradlew.bat :core:test :relay:test :android:executor-core:test :android:ui-core:test :e2e:test
+gradlew.bat :e2e:runFakePhone    # relay + fake phone for manual/external bots
+cd tests\conformance; npm ci; npm test   # after :e2e:test, also validates the real samples
+```
+
+**Blockers**
+- No `origin` remote, so nothing was pushed (commits only).
+- Task 05 (MCP) as described above.
+- Android SDK/licences for the APK.
+## 2026-11-23 12:07 PM — ds1 — deepseek/deepseek-flash (DeepSeek V4.1 Flash) — task: desktop agent phase 2, Windows first (`desktop/` only)
+
+**Branch** `pb/desktop-agent`. New Gradle module `:desktop` (Kotlin/JVM 17, `application` plugin,
+`kotlinx-serialization` plugin) included in `settings.gradle.kts`. Reuses `:core` (protocol, pairing,
+Noise `XX`, control arbiter, chunking) and `:relay` (embedded relay + `RelayClient`); the only new
+dependency is ZXing core 3.5.3 (Apache-2.0) for the pairing QR, already listed for Android in
+`docs/THIRD_PARTY.md`, which now has a desktop section. The UI is Swing/`java.awt`, so no Compose or
+extra UI toolkit is downloaded.
+
+**Done**
+
+- **Tray app** (`ui/TrayApp`): tray icon with menu (open, pair, bots, activity, show/hide indicator,
+  kick everyone, quit), tooltip and first menu line always naming the bot in control, and a
+  `TrayIcon.displayMessage` balloon on every controller change.
+- **Always-visible indicator** (`ui/IndicatorWindow`): small always-on-top strip, "Claude is in
+  control" / "No bot in control" / "· N waiting", click opens the window, X hides it, Esc dismisses it.
+- **Main window** (`ui/MainWindow`): Status, Pair a bot (QR + short code + link + Copy + Save `.pbpair`
+  + Cancel + ten-minute countdown + "Allow this bot?" table with Allow/Deny/level), Bots (name,
+  fingerprint, level, on/off, last seen, unpair, change level, kick everyone), Activity log (per-bot
+  filter, refresh, clear), Relay (this PC / custom URL + pin, Apply, Move heart here). Closing the
+  window or pressing Esc hides it to the tray.
+- **Pairing / sessions** (`session/DesktopSessionHandler`): relay envelopes → pairing requests against
+  live offers, Noise `XX` responder with the bot's paired key pinned, decrypted `AppRequest` →
+  executor → sealed `AppResponse`, `queue_position` on request_control, `control_changed` broadcast,
+  sealed `kicked` on disable/unpair/kick, `relay_moved` broadcast.
+- **Executor** (`executor/DesktopExecutor`): `unknown_cmd` → `permission_denied` → `not_controller` →
+  `bad_args` → device call, then `touch` for Control/Full activity. Implements every protocol command
+  that makes sense on a PC plus the desktop extensions below.
+- **Device layer** (`device/`): AWT `Robot` capture for all monitors (`screens`, `screenshot` with
+  inline ≤2 MiB or `chunk` events, `screen_stream` frames at a capped fps), Robot mouse/keyboard
+  (click, hold, drag, move, wheel incl. Shift+wheel, Unicode paste-with-clipboard-restore, key combos),
+  `ShellRunner` (PowerShell/cmd, UTF-8 console, hard timeout, 8 MiB/256 KiB caps, stdout/stderr on their
+  own threads), `FileOps` (list/read/write/delete with caps), `Installer` (winget, msiexec, exe launch,
+  https-only download), all behind seams so tests use `FakeDesktopDevice`.
+- **State and storage** (`state/`, `app/`): activity log (newest first, 1000-entry cap, atomic
+  `activity.v1.json`, payload-free descriptions), `DesktopState` snapshots, settings
+  (`desktop.v1.json`), identity (`identity.v1.json`, role device), bot registry (`bots.v1.json` via
+  core `JsonFileBotRegistry`), and `DesktopHeart` (embedded relay on 8443 or an ephemeral port with a
+  self-signed cert + pin, own client over loopback, persisted move secret, `moveTo` hand-over,
+  `relay_move` both directions: `to:"this"` starts the heart and broadcasts `relay_moved`, a `wss://`
+  target hands over, a peer id answers an error).
+- **Pairing offers carry the relay pin.** After merging `main`, `PairingOffer` has an optional
+  `relay_pin`; the desktop now passes its heart's certificate fingerprint to
+  `PairingManager.createOffer(..., relayPin)`, so a bot that scans the QR/link/file can reach the
+  self-signed relay. A custom relay's configured pin is used instead when this PC is not the heart.
+- **Tests: 94 JVM tests, all green** in `desktop/src/test` - key-combo parsing and the `key` mapping,
+  stream timing/limits/stop-early, shell runner (fake process caps/timeout + real PowerShell and cmd),
+  file ops, installer command building and https rules, activity log persistence and payload-free
+  details, state transitions, settings, heart controller rules, the full executor command matrix with a
+  fake device, a Noise/pairing/kick session suite with a real bot-side session, QR rendering, and a
+  **full-stack test** (`DesktopRelayIntegrationTest`) that pairs by short code through a real embedded
+  relay, completes a real Noise handshake and gets a `status` answer in under a second.
+
+**Protocol notes (additive only; `docs/PROTOCOL.md` untouched because other lanes own it)**
+
+New desktop-only command names, all enforced by the desktop's permission table:
+`screens` (view), `screen_stream` (view), `move` (control), `drag` (control), `scroll` (control),
+`key_combo` (control), `install` (full). `screen_stream` sends a new event name `frame` with
+`{stream_id, index, total, mime, width, height, data_b64}`. `screenshot` accepts an optional
+`screen_id` (unknown keys are ignored by `core`, so this is additive). `ui_tree`, `settings` and
+`install_apk` answer `unknown_cmd` with a message that they are Android-only. Nothing existing was
+renamed or reshaped. `core`'s `FilesResult` has no truncation flag, so the 2000-entry listing cap is
+silent (the Android handoff's claimed `truncated` field is not in `core`).
+
+**How to test**
+
+```
+gradlew.bat :desktop:test                          # 94 tests, headless, no display or network needed
+gradlew.bat :desktop:run --args="--smoke-ms 6000"  # starts tray + indicator + heart, quits cleanly
+gradlew.bat :desktop:run                           # the real app (quit from the tray)
+```
+The acceptance runs were done on this PC: `:desktop:run` came up with the tray icon, the indicator, the
+embedded heart on `wss://<lan>:8443` and this PC's client connected over loopback, printed no errors,
+and quit cleanly (nothing left running, no listener on 8443 afterwards). `:desktop:test` is green.
+
+**Left / next**
+
+- Screen capture and input need an interactive desktop session; a locked screen or a service session
+  cannot capture pixels (Windows rule, documented in `desktop/README.md`).
+- macOS/Linux need four seams re-implemented (`AwtScreenSource`, `RobotInput`, the shell command wrapper
+  and the installer commands); the rest is OS-neutral.
+- `relay_move` to another *peer id* is not implemented (the bot can pass that peer's relay URL instead).
+- No screen recording codec yet: streaming is JPEG/PNG frames as `frame` events, not a video stream.
+- `open_app` starts a program and does not wait for it to become foreground.
+- The desktop's session handler duplicates the phone's `SessionHandler` shape (different executor
+  types). A shared transport module in `:core` would remove the copy if another lane wants it.
+- `install` launches `.exe` installers interactively; unattended `.exe` flags differ per vendor and are
+  left to the user.
+
+**Blockers:** none. Merged to `main` with `--ff-only` after `:desktop:test` and the repo-wide `test`
+task passed. No `origin` remote exists, so nothing was pushed (commits only).
+
+## 2026-11-23 11:52 — ds1 — deepseek/deepseek-flash (DeepSeek V4.1 Flash) — task: Shizuku integration (`android/` only)
+
+**Branch** `pb/android-shizuku`. **Done** (JVM-testable layer, app wiring, docs):
+
+- **Full level now needs control.** `Command.INSTALL_APK/SHELL/FILES/SETTINGS/RELAY_MOVE` have
+  `needsControl = true`, matching `core/.../Commands.kt` (`needsControl = level >= CONTROL`) and the
+  task statement. The executor's control check runs before the handler, so a Full bot that is not the
+  controller gets `not_controller`, never a shell command.
+- **`android/executor-core` (plain Kotlin, tested on the JVM):**
+  - `ShizukuState`: `ready` / `not_running` / `not_installed` / `no_permission` / `unsupported`, each
+    with the user-facing hint. `not_running` says Shizuku must be **restarted after every reboot**.
+  - `ShizukuShell` seam (`exec(script, timeoutMs, stdin)`), `ShellResult` (exit, raw stdout bytes,
+    stderr, `timedOut`, `launchFailed`) and `ShellRunner` (8 MiB stdout / 256 KiB stderr caps, stdin
+    on its own thread, SIGTERM then kill at the deadline).
+  - `ShellQuote`: single-quote escaping plus validation of paths (absolute, single line), settings
+    keys (`[A-Za-z0-9_.:-]+`), settings values, shell commands and APK split names.
+  - `ShellFiles`: `files list` (stat, 2000-entry cap with `truncated`), `read` (`head -c` cap,
+    4 MiB), `write` (raw bytes on stdin via `cat >`), `delete` (`rm -rf`); shell errors become
+    `internal`.
+  - `ShellApkInstaller`: PackageInstaller session driven through `pm install-create -r -S` →
+    `pm install-write -S <session> base.apk` (APK on stdin) → `pm install-commit`; abandons the
+    session on failure. The package name comes from the APK manifest (inspector seam) **before** the
+    install, so `{package}` is always known.
+  - `HttpsApkDownloader`: HTTPS only, redirects only to HTTPS, 256 MiB cap. `B64` decodes base64url
+    or standard with/without padding and encodes base64url without padding (PROTOCOL.md §1).
+  - `ShizukuFullCommandHandler`: validates args first (`bad_args` never reaches the device), maps
+    `shizuku_unavailable` / `timeout` / `internal`, and implements:
+    `install_apk {url|data_b64+name}`, `shell {command,timeout_ms}` → `{exit,stdout,stderr}`,
+    `settings {namespace,key,value?}` → `{value}` (`null` for unset), `files {op,path,data_b64?}`
+    → `{op,entries}` / `{op,data_b64,bytes}` / `{op,ok,bytes}` / `{op,ok}`. `relay_move` is left to the
+    relay controller and never touches Shizuku.
+  - **132 JVM tests** (was 74 in executor-core): handler validation/routing, shell timeout, settings
+    get/put and injection rejection, files parse/read/write/delete/caps, install session flow and
+    every failure branch, quoting, base64, `ShellRunner` (fake `Process`), executor integration
+    (level, control, Shizuku outage).
+- **`android/app`:** `ShizukuBridge` (singleton `ShizukuShell` with the live state, binder
+  received/dead + permission-result listeners, `openShizukuOrDownload`); `ShizukuPermissionActivity` +
+  `activity_shizuku.xml` (not installed / not running / not allowed / too old, each with the matching
+  button); Shizuku state line and button on the home screen; `status.shizuku` true only when ready;
+  `ShizukuProcess` starts `sh -c` through the service AIDL; manifest provider/permission/queries.
+- **Merge with the service/UI lane:** `BridgeRuntime` now keeps the Shizuku handler installed
+  permanently and treats `BridgeRuntime.setFullHandler(...)` as the **relay_move** handler only. That
+  keeps both lanes working: the `BridgeService` controller still owns `relay_move`, and stopping the
+  bridge no longer replaces the Shizuku handler with an "unavailable" stub. `BridgeController` itself
+  is unchanged.
+- **Dependencies:** `dev.rikka.shizuku:api/provider/aidl:13.1.5`. The published licence is **MIT**
+  (verified in the POM and AAR metadata), not Apache-2.0 as some guides say. The app module now has a
+  `repositories { google(); mavenCentral() }` block, which the UI lane's ZXing dependency also needs.
+- **Docs:** `docs/THIRD_PARTY.md` records Shizuku 13.1.5 (MIT), the AIDL adapter and AndroidX
+  annotation; `android/README.md` documents the Shizuku design and the split of Full-level commands.
+
+**Protocol notes (no wire changes):** `files.mtime` is **epoch milliseconds** (core's `FileEntry.mtime`
+is a plain Long); `files list` adds an optional `truncated:true` when the 2000-entry cap is hit;
+`install_apk` and `files` results follow `core/model/Commands.kt` exactly. Nothing to renumber.
+
+**How to test**
+```
+gradlew.bat :android:executor-core:test      # 132 tests, no Android SDK needed
+gradlew.bat test                            # repo-wide
+gradlew.bat :android:app:assembleDebug      # needs an Android SDK + accepted licences (pending)
+```
+
+**Left**
+- **APK build pending the Android SDK** (none installed on this PC; do not install one on the user's
+  behalf). The app sources were additionally type-checked against an API 34 `android.jar` with a
+  stub `R`, so the Kotlin is known to compile; expect only AGP/DSL/lint adjustments on the first real
+  build.
+- Nothing runs on a real phone yet: the transport lane already calls `BridgeRuntime.handle` (it is
+  synchronised), so shell commands run off the UI thread.
+- A follow-up should move from the service `newProcess` AIDL to a Shizuku `UserService` when upstream
+  removes `newProcess` from the service as well; the seam is `ShizukuProcess` + two lines in
+  `ShizukuBridge.exec`.
+- `files` has no append/resume; a read above 4 MiB and a write above the transport cap need a
+  follow-up chunked-files protocol if anyone needs them.
+- Spotted while merging, outside this task: `android/ui-core`'s `ActivityLog` and `RelayController`
+  use `java.nio.file.Files.readString`/`writeString`, which the earlier core audit flagged as Java 11
+  APIs that Android O (API 26) may not have. Worth a quick API 26 check by the UI lane; the fix is the
+  same byte-array read/write `JsonFileBotRegistry` uses.
+
+**Blockers:** none. Merged to `main` with `--ff-only` after `:core`, `:relay`, `:android:executor-core`
+and `:android:ui-core` tests passed. No `origin` remote exists, so nothing was pushed (commits only).
+
+## 2026-11-23 11:45 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
+Task: Android foreground service, pairing UI, bot list, permissions and notifications (`android/`),
+branch `pb/android-service-pairing-ui`.
+
+**Integration note (important for the other lanes)**
+- `main` absorbed tasks 01 (`pb/protocol-pairing`) and 02 (`pb/relay`) while this task ran, and the
+  final merge includes the relay rewrite (`eac556a`): the relay now uses `:core`
+  `RelayEnvelope`/`EnvelopeCodec`/`HelloAuth` and its duplicate envelope/crypto/Gson code is gone.
+  The app was adapted: `BridgeController` passes the core envelope straight to `SessionHandler`, uses
+  the core `Identity` in `RelayClientConfig`, and publishes the short-code offer as a kotlinx
+  `JsonObject`; there are no relay↔core type conversions or Gson left in the app.
+- Additive executor changes: `ControlArbiter.kickAll()`, `CommandExecutor.full` is now a `var`, and
+  `BridgeRuntime.setFullHandler()` so the service can plug in `relay_move` after app start. Existing
+  executor tests stay green.
+
+**Done**
+- **`android/ui-core`** — new plain Kotlin/JVM module (always in the build, no `android.*`), 44 JVM
+  tests:
+  - `SessionHandler`: the transport seam, tested with a real bot-side `E2ESession`: Noise `XX`
+    responder handshake with key pinning, sealed request → executor → sealed response, a sealed
+    `kicked` event, disabled bots ignored, tampered ciphertext drops the session, and a sealed
+    `pair_request` decrypted against the live offer.
+  - `PairingController`: one live offer, QR/link/file payloads, 10-minute countdown (rounded up),
+    expiry, regenerate burns the old secret, cancel.
+  - `ApprovalController`: wraps `:core` `PairingManager`; name/fingerprint/requested level, level
+    picker can only lower, Allow stores the bot and sends the sealed `pair_result`, Deny leaves it
+    unpaired, an expired offer refuses approval. Tested through the real bot-side `PairingClient`.
+  - `BotListController`: rows (name, fingerprint, last seen, connected/in control/queue), on/off
+    switch closes a session, level change, unpair one bot without touching the others.
+  - `BridgeState`: live sessions + control mirror, per-command activity log, notification text
+    (`Alpha is in control` / `No bot in control` / `· N waiting`), control-change callbacks, idle
+    timeout, and `kickEveryone()` (clears holder + queue, closes sessions, logs per bot).
+  - `ActivityLog`: in-memory and atomic `activity.v1.json` stores, newest-first, per-bot filter, cap.
+  - `RelayController` + `RelaySettingsStore`: this phone / my PC / custom URL, URL rules (plain
+    `ws://` only on loopback), certificate pin, Move heart here, `relay_move` hand-over.
+  - `Onboarding`: accessibility / notifications / battery checklist model.
+  - `ExecutorProtocol`: `:core` `AppRequest`/`AppResponse` ↔ executor `Request`/`Response`, and a
+    log detail that never copies typed text, shell commands or file contents.
+- **`android/app`**:
+  - `BridgeService` (foreground, `connectedDevice|specialUse`, manifest permissions):
+    `BridgeController` loads the device identity (`identity.v1.json`), `JsonFileBotRegistry`
+    (`bots.v1.json`), activity log, `PairingManager`; starts the embedded relay (`:relay`
+    `Relay.start`, port 0, self-signed TLS, pin exposed) when this phone is the heart; keeps the
+    outbound `:relay` `RelayClient` (Wi-Fi or mobile data, backoff, follows `relay_moved`).
+  - `SessionHandler` (in `:android:ui-core`, so it is JVM tested): Noise `XX` responder per paired
+    bot with the paired public key pinned, decrypts `AppRequest` → `BridgeRuntime.handle` → sealed
+    `AppResponse`, `queue_position` event, `control_changed` broadcast, sealed `kicked` on
+    disable/unpair/kick. Pairing requests from an unknown peer are decrypted against live offers and
+    become a pending approval. `relay_move` (`to:"this"` or a `wss://` URL) is implemented as the
+    Full-level handler.
+  - `BridgeNotifications`: low-importance ongoing notification naming the controller (`No bot in
+    control` when nobody is) with **Stop** and **Kick everyone**; high-importance full-screen
+    `ApprovalActivity` notification for "Allow this bot?".
+  - Screens: pairing (ZXing core QR, short code, Share link, share-sheet `.pbpair` via a small
+    read-only `PairingFileProvider`, countdown, regenerate), approval (lock-screen full-screen,
+    name/fingerprint/requested level, lowering picker, Allow/Deny), Bluetooth-style bot list (switch,
+    level, unpair, kick everyone), per-bot activity log (filter, clear), relay screen, onboarding
+    checklist, extended main screen (start/stop bridge, controller text, doors to every screen).
+  - `AppStores` for the JSON files and identity generation; `LocalAddress` for the embedded relay's
+    advertised LAN address; `QrCodes` (ZXing core 3.5.3, Apache-2.0).
+- `docs/THIRD_PARTY.md` updated with ZXing (Apache-2.0); no Gson remains in the app after the relay
+  rewrite. `android/README.md` documents the
+  screens, service and new module.
+
+**How to test**
+```
+gradlew.bat :android:ui-core:test         # 44 view-model/state/transport tests (acceptance)
+gradlew.bat :android:executor-core:test   # 75 executor tests, incl. kickAll
+gradlew.bat :core:test                    # 111 core tests
+gradlew.bat :relay:test                   # 33 relay tests on the shared :core types
+```
+The app module is not included without an SDK, so `assembleDebug` was not run.
+
+**Left / next**
+- **APK build is pending an Android SDK + accepted licences** on this PC (not installed on purpose).
+  Expect the usual first-build fixes: AGP 9 DSL details, lint NewApi (guarded calls are already
+  version-checked), D8 duplicates from Bouncy Castle, and any resource/ID typo. A Kotlin compiler
+  syntax pass over `android/app` found no syntax errors; every remaining unresolved reference was
+  an `android.*`/ZXing symbol that only the SDK provides.
+- The embedded relay advertises the phone's LAN IPv4 address, which works on the same Wi-Fi but is
+  not reachable across NAT/ mobile data. For remote use, pick "My PC" or a custom `wss://` relay;
+  NAT traversal / a tiny VPS relay is a later task.
+- MediaProjection screenshots below API 30, the NotificationListenerService, and Shizuku (Full:
+  `install_apk`, `shell`, `files`, `settings`) remain earlier-task gaps; `relay_move` is now wired.
+- `E2ESession` handling now lives in `:android:ui-core` (`SessionHandler`) and is covered by the
+  tests above with a real bot-side handshake; the Android service only wires it to the relay client.
+- Pairing file export uses the system share sheet through `PairingFileProvider`; there is no
+  "save to Files" button beyond what the share sheet offers.
+- `relay_move {to:"this"}` starts the embedded relay and re-points this phone's own client. A full
+  live hand-over of a remote relay needs the old relay's `moveTo`/token path; the UI does not exercise
+  that yet. Android 14+ may also refuse the full-screen pairing intent unless the user grants that
+  permission; the high-priority notification still works.
+
+**Blockers**
+- The device identity is stored in app-private `identity.v1.json`; wrapping it with the Android
+  Keystore is still a follow-up (documented in `docs/PROTOCOL.md` as the app's job).
+- Android SDK (and licence acceptance) to build the APK — user decision, not installed by this bot.
+- No `origin` remote exists yet, so all commits are local only.
+
+
+
+## 2026-11-23 11:45 — ds2 (deepseek/deepseek-flash) — task 02 relay: landed on `:core`
+
+**Done** (branch `pb/relay`, folder `relay/`):
+- Merged `main` (task 01) and removed the relay's temporary duplicates. The relay now uses the shared
+  `:core` types end to end: `RelayEnvelope`/`EnvelopeCodec`, `HelloAuth` (challenge proof),
+  `X25519`/`X25519KeyPair` (Bouncy Castle), `PeerIds`, `ShortCode`, `B64Url`, `Primitives`.
+  Deleted `relay/.../crypto/{X25519,Base32,Codec,PeerIdentity}.kt`, `relay/.../envelope/RelayEnvelope.kt`
+  and the Gson helper; the **Gson dependency is gone** (`:core` brings kotlinx-serialization +
+  Bouncy Castle as `api()` dependencies, so the relay adds no JSON/crypto library of its own).
+- `RelayClient` now takes a `:core` `Identity` (its role goes on the wire) and its callbacks hand out
+  `:core` `RelayEnvelope` values; `payload` stays the opaque base64url end-to-end frame.
+- Pairing codes are canonicalised with `ShortCode.normalise`/`format` (so O->0, I/L->1, separators and
+  case match `:core`); the mailbox stores the offer as a kotlinx `JsonObject` and releases it once. The
+  relay still does not enforce the CRC-5 check symbol (documented), so a mistyped code yields
+  `code_not_found` rather than a protocol error.
+- TLS: a client without a pin now verifies the **host name** as well as the chain (a pinned fingerprint
+  replaces it); `relay_pin` documented in `relay/PROTOCOL-RELAY.md` and shown in the README.
+- Fixed `docs/THIRD_PARTY.md`: `main` carried a committed merge conflict (`<<<<<<<` markers) in the
+  relay section. The file is rewritten with the relay's real dependency set (no Gson) and keeps the
+  core and Android sections.
+- `:relay:test` green: **33 tests**. Twelve tests were deleted because they duplicated `:core`'s
+  RFC 7748 / Crockford coverage; every relay acceptance test remains (two peers exchanging envelopes,
+  forged/unauthorised hello, `peer_offline`, rate limit, oversize drop incl. the 16 MiB default,
+  mailbox single-use/expiry, `relay_move` A->B with both peers following, token replay/expiry, TLS
+  pinning, wrong pin, host name verification, health endpoint).
+- `:relay:shadowJar` rebuilt and smoke-tested (wss, printed pin, `/healthz`, persisted cert + identity).
+
+**Left**
+- Nothing blocking. `relay/PROTOCOL-RELAY.md` is now descriptive: the message model and proof belong to
+  `:core` (`docs/PROTOCOL.md`); the relay adds only `relay_pin` (offer) and `token` (`relay_moved`).
+- Android wiring: the app should start the relay when the user picks "this phone" as the host and pass
+  a `dataDir` in app storage. Still pending an Android SDK for the APK build.
+- Not covered yet: presence events to other peers, sharing a routing table between relay instances, and
+  `relay_moved` for peers that are offline at hand-over time.
+
+**How to test**
+```bash
+gradlew.bat :relay:test                     # 33 in-process tests on loopback, no SDK needed
+gradlew.bat :relay:run --args="--port 8443" # standalone, wss + self-signed cert
+gradlew.bat :relay:shadowJar                # single-file jar for a VPS
+```
+
+**Blockers:** none. No `origin` remote exists, so there is nothing to push yet.
+
+## 2026-11-23 12:41 -0600 - iceman (Iceman Contributor Free) - CI, security and release docs
+
+- **Done:** Added `.github/workflows/ci.yml` with GitHub Actions jobs: JVM build+tests matrix on Temurin 17 and 25 running `./gradlew :core:test :relay:test :android:executor-core:test`; Android `assembleDebug` job using `actions/setup-java`, `gradle/actions/setup-gradle`, and `android-actions/setup-android@v3` with SDK license acceptance and `platforms;android-36` + `build-tools;36.0.0` install (CI has SDK; this PC does not); Node jobs for `mcp` (skips cleanly when `mcp/package.json` is absent) and `tests/conformance` (`npm ci`, `npm test`). No secrets required; workflow permissions set to `contents: read`. Added `SECURITY.md` (threat model: relay untrusted, pairing consent, key storage, kick/unpair, malicious-bot impact by View/Control/Full level, reporting placeholder). Added `CONTRIBUTING.md`. Added `docs/ITCH_PAGE.md` and `docs/USER_GUIDE.md` for non-technical users. Resolved stale merge-conflict markers in `docs/THIRD_PARTY.md` while touching docs.
+- **Left:** MCP npm job will run real tests once `mcp/package.json` lands. Android APK build remains pending a locally installed SDK/licence acceptance; CI workflow covers it. Replace `security@phonebridge.dev` and `<GITHUB_URL>` placeholders before publishing.
+- **How to test:** Validate workflow YAML: `npx --yes js-yaml .github/workflows/ci.yml`. JVM tests: `.\gradlew.bat :core:test :relay:test :android:executor-core:test`. Conformance: `cd tests/conformance && npm ci && npm test`. Docs reviewed for consistency with `docs/SPEC.md` and `docs/PROTOCOL.md`.
+- **Blockers:** No GitHub `origin` remote configured; push skipped. No local Android SDK; `assembleDebug` not run locally.
+
+## 2026-11-23 11:30 -0600 - iceman (Iceman Contributor Free) - JSON Schemas, conformance tests, mock device
+- **Done:** Added `protocol/schema/*.schema.json` (draft 2020-12) for envelope, pairing-offer, pair-request, pair-result, request, response, event, and every command args/result in `docs/PROTOCOL.md`. Added `protocol/examples/` with one valid and at least one invalid example per message. Added `tests/conformance` (Node + vitest + ajv + ajv-formats) validating all examples; includes `src/protocol-samples.test.js` that auto-discovers captured JSON samples from `build/protocol-samples/*.json` (also `core|mcp|relay/build/protocol-samples/*.json`) and validates them when present. Added `tests/mock-device` (Node, `ws`) that connects to a relay as a device, completes hello auth (X25519 + HelloProof HMAC-SHA256), answers every command with realistic fake data (generated PNG screenshot, fake home-screen ui_tree, tap/type/key logging), honours permission levels and FIFO control queue with 120s idle auto-release. Added `docs/TESTING.md`.
+- **Dev mode / crypto:** Mock device uses clearly marked **plaintext dev mode** by default (route payload is base64url UTF-8 JSON). Encrypted E2E path (Noise XX / X25519+XChaCha20-Poly1305 per PROTOCOL) is not implemented here because tasks 01/05 crypto are not merged; add encrypted path once main has them and keep `--plaintext` as explicit dev flag. Relay hello proof is implemented to interop with pb/relay.
+- **Left:** When core/mcp emit `build/protocol-samples/*.json`, conformance will pick them up automatically. When task 01/05 crypto lands, wire encrypted payloads in mock device. Android APK build remains pending SDK.
+- **How to test:** `cd tests/conformance && npm ci && npm test` (186 tests pass). `cd tests/mock-device && npm ci && node src/index.js --help` (starts; connect with `node src/index.js --relay ws://127.0.0.1:8787`).
+- **Blockers:** No GitHub `origin` remote configured; push skipped. Core/mcp crypto not merged; plaintext dev mode used as documented.
+
+## 2026-11-23 11:26 — ds1 (deepseek-flash / DeepSeek V4.1 Flash) — task 01: protocol, crypto, pairing (`core/`)
+
+**Done** (branch `pb/protocol-pairing`, all in `core/` plus `docs/PROTOCOL.md`, `docs/THIRD_PARTY.md`):
+
+- **Message model** for everything in PROTOCOL.md: `RelayEnvelope` (+hello/route/ping/pong/error/
+  relay_moved/pair_lookup/pair_offer), `PairingOffer`/`PairRequest`/`PairResult`, typed app
+  `AppRequest`/`AppResponse`/`AppEvent`, all 17 commands with typed args, typed results, error codes,
+  `PermissionLevel` (VIEW < CONTROL < FULL) and the `CommandType`/`Commands.requiredLevel` table.
+  kotlinx.serialization plugin added to `core/build.gradle.kts`; one shared `PbJson` config.
+- **Identities**: X25519 key pairs, `peer_id` = lowercase base32(SHA-256(pub)[0..16)) = 26 chars,
+  fingerprint = first 8 chars as `ABCD-EFGH`; stored identity JSON with key/public mismatch rejection.
+- **E2E**: real Noise `XX` (`Noise_XX_25519_ChaChaPoly_SHA256`, rev 34) implemented on Bouncy Castle
+  primitives so it runs on Android API 26+: per-direction keys, little-endian 64-bit counters, strict
+  in-order processing (replays/reordering/tampering rejected without advancing the counter), prologue
+  `PhoneBridge/1/noise-xx`, 1-byte frame tags (0x01 handshake / 0x02 transport), key pinning helper.
+- **Pairing**: 32-byte one-time secret, 10-minute expiry, burn-on-use/burn-on-deny, `PairingManager`
+  (`createOffer`/`accept` -> `PendingApproval`/`approve(level)`/`deny`), sealed request/result with
+  HKDF-SHA256 + ChaCha20-Poly1305, direction + device-key AAD, bot-side `PairingClient`, short code
+  `7K4-Q9B` (Crockford base32, 5 data + CRC-5 check symbol, O→0 I/L→1 normalisation),
+  `phonebridge://pair?d=` links, `.pbpair` files, QR payload = link, `BotRegistry` with in-memory and
+  atomic JSON-file implementations.
+- **Control arbiter**: one controller, FIFO queue with positions, 120 s idle auto-release with
+  promotion, `touch`, `kickAll`, state callback.
+- **Chunking**: 256 KiB chunks (1 MiB ceiling), 64 MiB payload cap, `chunk` events with whole-payload
+  SHA-256, out-of-order reassembly, duplicate/gap/oversize rejection; sizes proven well under the
+  8 MiB transport and 16 MiB relay caps.
+- **Relay hello proof**: documented DH-MAC challenge (`relay_pub` + `nonce`) so a peer proves ownership
+  of its X25519 key without signatures; `HelloAuth` implements both sides.
+- **Relay interop**: core now matches the relay lane's merged wire contract exactly — Crockford base32
+  `peer_id`, the `dh-hmac-sha256` `challenge`/`hello` proof over
+  `phonebridge/hello/v1|<relay_id>|<relay_pub>|<peer_id>|<nonce>`, `hello_ok` with limits,
+  `pair_store`/`pair_stored`/`pair_lookup`/`pair_offer` carrying the offer as a JSON object, and errors
+  as a nested `error:{code,message}` object. `HelloAuth` implements both sides of the proof.
+- **Docs**: `docs/PROTOCOL.md` rewritten to the exact bytes/labels implemented; `docs/THIRD_PARTY.md`
+  merged with the Android and relay lanes (kotlinx.serialization Apache-2.0, Bouncy Castle 1.87
+  MIT-style, Gson via the relay, AGP build-only); short-code examples in README/SPEC corrected from
+  `7K4-Q9M` to a code that passes its own check symbol (`7K4-Q9B`).
+- 111 JVM tests covering every acceptance criterion (JSON round-trips for every message type,
+  handshake + both encryption directions, tampered/replayed ciphertext, short-code check symbol and
+  normalisation, link/file round-trip, 10-minute expiry + single use with an injected clock,
+  permission table, arbiter queue/idle/kickAll, chunk/reassemble, relay proof vectors, app messages
+  travelling through a live session).
+- **Android API 26 audit**: `JsonFileBotRegistry` used `Files.readString`/`writeString` (Java 11, not
+  on Android O); it now reads/writes UTF-8 bytes. Everything else is BC lightweight crypto,
+  `java.util.Base64`, `java.nio.file` basics from API 26, or plain Kotlin.
+- **Pairing lifecycle fix**: a pending "Allow this bot?" prompt is no longer dropped when the user
+  creates another offer, and an unanswered prompt expires after ten minutes instead of lingering.
+- **Convenience**: `E2ESession.sealRequest/sealResponse/sealEvent/openAppMessage` carry the typed
+  application messages over a live session, so the transport lanes only move bytes.
+
+**Left / for other lanes**
+
+- Relay (02): the wire contract is now implemented in `core` as well. The relay can delete its local
+  `crypto/Base32.kt`, `crypto/X25519.kt`, `envelope/RelayEnvelope.kt` and the `HelloProof` copy and call
+  `PeerIds`, `HelloAuth`, `RelayEnvelope`/`EnvelopeCodec` from `:core` (the shapes are identical). The
+  relay's BigInteger X25519 is not constant time; `core`'s is Bouncy Castle's.
+- Android (03): `core` now models the protocol, so replace the local `Request`/`Response`/
+  `PermissionLevel`/`ControlArbiter` copies in `android/executor-core` with the `core` types at the
+  transport boundary (`Commands.decodeArgs`, `Commands.check`, `ControlArbiter`, `AppMessages`).
+  Lane 03's additive extensions are now in core and PROTOCOL.md: `UiNode.visible`, `long_press` with
+  `node_id`, `request_control` returning `{granted:false, position}`. Wire `PairingManager` +
+  `JsonFileBotRegistry` into the pairing UI and `E2ESession` into the foreground service. The APK build
+  is pending an Android SDK (not installed on this PC).
+- Bot/MCP (04): drive the documented JSON on top of `AppMessages`; `core/README.md` has copy-paste
+  snippets.
+- Nice-to-have follow-ups: JSON schema files under `docs/`, negative tests for very large UI trees,
+  desktop-side `SecureChannel` concurrency notes.
+
+**How to test**: `gradlew.bat :core:test` (JDK 25 on PATH, no Android SDK needed).
+
+**Blockers**: none. No `origin` remote exists yet, so nothing was pushed (commits only).
+
+## 2026-11-23 11:14–11:35 — ds2 / deepseek/deepseek-flash — task 02 relay server (`:relay`)
+
+**Done (acceptance criteria met, `:relay:test` green: 45 tests)**
+- Embeddable relay API in `dev.phonebridge.relay`: `Relay.start(RelayConfig): RelayHandle`, `stop()`,
+  `moveTo(newUrl)`, `stats()`, `peers()`; per-connection `RelayClient` for devices, bots and tests.
+- Transport: hand-written RFC 6455 server + client (text frames, ping/pong, close, masking), so the
+  relay has no heavy dependency and runs on Android API 26+ (see `docs/THIRD_PARTY.md` for why a
+  library was not used and what Gson is used for).
+- TLS: PKCS#12 keystore or a self-signed P-256 certificate generated on first run and persisted
+  (`relay-cert.p12`), fingerprint exposed as base64url + hex for pinning (`relay_pin` in a pairing
+  offer, documented in `relay/PROTOCOL-RELAY.md`), clients pin the fingerprint; a client without a pin
+  verifies the chain **and** the host name; `--insecure-dev` / `insecureDev` allows plain `ws://` off
+  loopback; loopback `ws://` is allowed.
+- Peer auth: relay `challenge` (nonce + per-connection X25519 ephemeral key) and `hello` with an
+  `dh-hmac-sha256` proof of key ownership; `peer_id` must match the public key; replayed nonce, forged
+  proof, all-zero key and spoofed `from` are all rejected.
+- Routing: `route` forwarded verbatim by `to` (payload never parsed), `peer_offline` errors,
+  `ping`/`pong`, per-peer token bucket rate limit (dropped messages are reported once per second),
+  16 MiB envelope cap enforced before buffering (close code 1009), connection cap (512), 30 s hello
+  timeout, idle keep-alive pings.
+- Short-code mailbox: `pair_store` / `pair_lookup` with canonical Crockford code normalization,
+  10 minute TTL, single release, 16 KiB offer cap.
+- `relay_move`: old relay emits `relay_moved {new_url, token, expires}` with per-peer one-time HMAC
+  tokens (shared `moveSecret`); the new relay accepts each token once (`token_used` on replay) and
+  `RelayClient` follows automatically and keeps exchanging messages.
+- Standalone: `gradlew.bat :relay:run --args="--port 8443"`, `gradlew.bat :relay:shadowJar` →
+  `relay/build/libs/phonebridge-relay-all.jar` (verified: serves `/healthz`, generated cert + pin,
+  persisted identity). Both were smoke-tested from the command line.
+- Docs: `relay/README.md` (embedding, standalone, config table, security notes),
+  `relay/PROTOCOL-RELAY.md` (the concrete relay wire contract), `docs/THIRD_PARTY.md` (Gson
+  Apache-2.0; RFC 6455 / RFC 7748 / X.509 implemented from specification).
+
+**Left / for the next lane**
+- **Resolved in the 11:45 entry above:** the relay now uses the `:core` envelope/identity types, so the
+  old placeholder types in `relay/.../envelope/` are gone.
+- **Identity details core must align with:** relay `peer_id` = Crockford base32 (lowercase, 26 chars)
+  of the first 16 bytes of SHA-256(public key); fingerprint `ABCD-EFGH`. Relay `hello` proof is
+  `HMAC-SHA256(X25519(peer_priv, relay_ephemeral_pub), "phonebridge/hello/v1|<relay_id>|<b64url(relay_pub)>|<peer_id>|<b64url(nonce)>")`.
+- Protocol additions are documented in `relay/PROTOCOL-RELAY.md` and are additive only; `docs/PROTOCOL.md`
+  was deliberately not edited (task 01 owns it). Core should adopt `challenge`, `hello_ok`,
+  `pair_store`, `pair_lookup`, `pair_offer` and the extra error codes; if the proof format changes, use
+  the `proof` field in `challenge` to negotiate.
+- The relay's X25519 (`relay/.../crypto/X25519.kt`) is a BigInteger reference implementation: correct
+  (RFC 7748 vectors in tests) but **not constant time**. It only touches per-connection ephemeral keys
+  and handshake nonces. When `:core` lands a constant-time X25519/Noise implementation, switch the
+  relay handshake over to it and delete this copy.
+- Android app wiring is not done: `android/` should start the relay when the user picks "this phone"
+  as the host, and pass a `dataDir` inside app storage. The APK build is still pending an Android SDK
+  on this machine (no `ANDROID_HOME`); the relay itself is plain JVM Kotlin and is covered by tests.
+- Not covered yet: presence events (`peer_online`/`peer_offline` notifications to other peers),
+  multiple relay instances sharing a routing table, and `relay_moved` for peers that are offline at
+  hand-over time (they reconnect to the URL they already know).
+
+**How to test**
+```bash
+gradlew.bat :relay:test                                        # 45 in-process tests
+gradlew.bat :relay:run --args="--port 8443"                    # standalone, wss + self-signed cert
+gradlew.bat :relay:shadowJar                                   # single-file jar for a VPS
+java -jar relay/build/libs/phonebridge-relay-all.jar --help
+```
+Tests are on loopback with port 0, so they do not need the SDK, a network, or free fixed ports.
+
+**Blockers:** none. Merged to `main` with `--ff-only` after `:relay:test` and the repo-wide `test`
+task were green. No `origin` remote exists, so there is nothing to push yet.
+
+## 2026-11-23 11:30 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
+Task: Android AccessibilityService + command executor (`android/` only), branch
+`pb/android-accessibility`.
+
+**Done**
+- `android/executor-core` — new plain Kotlin/JVM module, always included in `settings.gradle.kts`
+  (no `android.*` imports, builds and tests on this SDK-less PC):
+  - `Request`/`Response`/`ProtocolError`/`ErrorCode` (exact `docs/PROTOCOL.md` codes and shapes) and
+    `PermissionLevel` + `BotSession`. `:core` still only has `Version.kt`, so these are small local
+    types, not `:core` types; when `:core` lands its protocol classes, convert once at the transport
+    boundary (`Request`/`Response` are plain data classes).
+  - `Command` table (level, needs-control, needs-accessibility per command), `KeyCommand` mapping to
+    the `GLOBAL_ACTION_*` codes, `Args` typed reader (`bad_args` instead of crashes).
+  - `CommandExecutor` (order: unknown_cmd → permission_denied → accessibility_disabled →
+    not_controller → bad_args → device call; device refusal = `internal`).
+  - `ControlArbiter` (one controller, FIFO queue, 120 s idle auto-release, promotion on release).
+  - `UiTreeSnapshot` (protocol `Node` export, ids = child-index paths `0`/`0.1`/`0.3.0`, `max_depth`,
+    `visible_only`), `OpenAppResolver` (package/label with ambiguity reporting), `SettingsDeepLink`
+    constants, `DeviceControl` seam + `FullCommandHandler` for the Full-level commands.
+  - 74 JVM tests with a recording `FakeDevice`.
+- `android/app` — AGP 9.0.1 application module (`dev.phonebridge.app`, minSdk 26, target/compileSdk
+  36), manifest, resources, and:
+  - `BridgeAccessibilityService` + `res/xml/accessibility_service_config.xml`
+    (`canRetrieveWindowContent`, `flagReportViewIds`, `canPerformGestures`, `canTakeScreenshot`, no
+    `flagRequestFilterKeyEvents`); UI tree → `UiNode`; tap/long_press/swipe via `dispatchGesture`;
+    `type` via `ACTION_SET_TEXT` + clipboard-paste fallback; `key` via `performGlobalAction`;
+    `open_app` via PackageManager launch intents; screenshot via `takeScreenshot` on API 30+.
+  - `AndroidDeviceControl` (the `DeviceControl` implementation), `BridgeRuntime` (single
+    `CommandExecutor` + arbiter wired in `BridgeApp`), `AccessibilityBridge` (live service ref),
+    `SettingsLinks` (accessibility settings deep link + "is it enabled" check), `MainActivity`
+    (on/off state, deep-link button, "test screen read" diagnostic).
+  - Build wiring: `pluginManagement { google(); mavenCentral(); gradlePluginPortal() }` and the AGP
+    version in `settings.gradle.kts`; AGP declared `apply false` in the root build.
+
+**Left / next**
+- **`gradlew.bat :android:app:assembleDebug` is pending an Android SDK** (and licence acceptance)
+  on this PC. Not installed on purpose. `:android:app:tasks` configures fine, and `assembleDebug`
+  stops only at "accept the SDK licences / install build-tools 36 + platform 36". Expect the usual
+  first-build fixes for the app module (AGP 9 DSL details, any lint NewApi hits) once an SDK exists.
+- `key: enter` is not implemented: the accessibility APIs cannot inject a key or IME-enter, so it
+  returns `internal` from the device. Needs the Full-level Shizuku path (`input keyevent 66`).
+- `notifications` returns an empty list until a NotificationListenerService task lands.
+- `screenshot` below API 30 needs MediaProjection (answers `projection_denied` today).
+- Full-level commands (`install_apk`, `shell`, `files`, `settings`) answer `shizuku_unavailable`,
+  `relay_move` answers `internal`. `CommandExecutor` accepts a `FullCommandHandler` so the Shizuku
+  and relay lanes can plug in without touching the dispatcher.
+- `open_app` launches the package but does not wait for it to be foreground; a follow-up may wait for
+  the window state event before answering.
+
+**Protocol notes (additive only, `docs/PROTOCOL.md` untouched because the core lane owns it)**
+- `Node` includes an extra `visible` boolean.
+- `long_press` also accepts `node_id` (like `tap`); node-centred long-press.
+- `request_control` queued → `{granted:false, position:<n>}` in the result, in addition to the
+  `queue_position` event.
+- `screenshot` result shape unchanged (`mime`, `width`, `height`, `data_b64`).
+
+**How to test**
+- `gradlew.bat :android:executor-core:test` (74 tests: permission denials, not_controller,
+  accessibility_disabled, bad_args, each command routed to the fake device, node-id → centre mapping,
+  control queue/idle timeout, app-label resolution).
+- `gradlew.bat :core:test` must stay green (it does).
+- `gradlew.bat :android:app:tasks` configures the Android module without an SDK.
+
+**Blockers**
+- Android SDK + accepted licences to build the APK (user decision, not installed by this bot).
+- Transport/relay lane: `BridgeRuntime.handle(session, request)` is the seam to call.
 
 ## 2026-11-23 — setup (Grok Bot)
 - Repo scaffolded: docs/SPEC.md, docs/PROTOCOL.md, docs/BOT_WORKFLOW.md, Gradle wrapper (9.2.1) with

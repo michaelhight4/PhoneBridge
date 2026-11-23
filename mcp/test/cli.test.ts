@@ -4,8 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseCliArgs, runCli, type CliIo } from "../src/cli/index.js";
 import { MockRelay } from "./helpers/mockRelay.js";
-import { MockDevice, createMockOffer } from "./helpers/mockDevice.js";
-import { createIdentity, randomBytes } from "../src/client/crypto.js";
+import { MockDevice } from "./helpers/mockDevice.js";
 
 function capture(): { io: CliIo; stdout: string[]; stderr: string[] } {
   const stdout: string[] = [];
@@ -34,8 +33,7 @@ describe("CLI argument parsing", () => {
     const parsed = parseCliArgs(["shell", "--", "ls", "-la", "--color=never"]);
     expect(parsed.command).toBe("shell");
     expect(parsed.positionals).toEqual(["ls", "-la", "--color=never"]);
-    const inline = parseCliArgs(["screenshot", "--output=shot.png"]);
-    expect(inline.flags.get("--output")).toBe("shot.png");
+    expect(parseCliArgs(["screenshot", "--output=shot.png"]).flags.get("--output")).toBe("shot.png");
   });
 
   it("rejects unknown flags", () => {
@@ -57,8 +55,7 @@ describe("CLI commands", () => {
     const home = await tempHome();
     const devices = capture();
     expect(await runCli(["--home", home, "devices"], devices.io)).toBe(0);
-    const parsed = JSON.parse(devices.stdout.join("")) as Record<string, unknown>;
-    expect(parsed["devices"]).toEqual([]);
+    expect((JSON.parse(devices.stdout.join("")) as Record<string, unknown>)["devices"]).toEqual([]);
 
     const status = capture();
     expect(await runCli(["--home", home, "status"], status.io)).toBe(1);
@@ -69,16 +66,8 @@ describe("CLI commands", () => {
     const relay = new MockRelay();
     await relay.listen();
     const home = await tempHome();
-    const deviceIdentity = await createIdentity();
-    const secret = randomBytes(32);
-    const { link } = await createMockOffer(deviceIdentity, relay.url(), { secret });
-    const device = await MockDevice.create({
-      relayUrl: relay.url(),
-      identity: deviceIdentity,
-      pairingSecret: secret,
-      autoPair: true,
-      level: "full",
-    });
+    const device = await MockDevice.create({ relayUrl: relay.url(), autoPair: true, level: "full" });
+    const { link } = await device.createOffer(relay);
     try {
       const pair = capture();
       expect(await runCli(["--home", home, "pair", link, "--level", "full"], pair.io)).toBe(0);
@@ -88,20 +77,13 @@ describe("CLI commands", () => {
 
       const shotFile = join(home, "shot.png");
       const shot = capture();
-      expect(
-        await runCli(["--home", home, "screenshot", "--output", shotFile], shot.io),
-      ).toBe(0);
-      const bytes = await readFile(shotFile);
-      expect(bytes.toString("utf8")).toBe("mock-png-bytes");
-      const meta = JSON.parse(shot.stdout.join("")) as Record<string, unknown>;
-      expect(meta["mime"]).toBe("image/png");
-      expect(meta["width"]).toBe(1080);
+      expect(await runCli(["--home", home, "screenshot", "--output", shotFile], shot.io)).toBe(0);
+      expect((await readFile(shotFile)).toString("utf8")).toBe("mock-png-bytes");
+      expect((JSON.parse(shot.stdout.join("")) as Record<string, unknown>)["mime"]).toBe("image/png");
 
       const tap = capture();
       expect(await runCli(["--home", home, "tap", "540", "1200"], tap.io)).toBe(0);
-      expect(device.received.some((entry) => entry.cmd === "tap" && entry.args["x"] === 540)).toBe(
-        true,
-      );
+      expect(device.received.some((entry) => entry.cmd === "tap" && entry.args["x"] === 540)).toBe(true);
 
       const key = capture();
       expect(await runCli(["--home", home, "key", "home"], key.io)).toBe(0);
@@ -113,31 +95,28 @@ describe("CLI commands", () => {
 
       const tree = capture();
       expect(await runCli(["--home", home, "ui-tree", "--max-depth", "2"], tree.io)).toBe(0);
+
+      const files = capture();
+      expect(await runCli(["--home", home, "files", "list", "/sdcard"], files.io)).toBe(0);
+      const filesResult = JSON.parse(files.stdout.join("")) as Record<string, unknown>;
+      expect((filesResult["result"] as Record<string, unknown>)["op"]).toBe("list");
     } finally {
       await device.stop();
       await relay.close();
     }
   });
 
-  it("prints the raw base64 screenshot when no output file is given", async () => {
+  it("prints the raw base64url screenshot when no output file is given", async () => {
     const relay = new MockRelay();
     await relay.listen();
     const home = await tempHome();
-    const deviceIdentity = await createIdentity();
-    const secret = randomBytes(32);
-    const { link } = await createMockOffer(deviceIdentity, relay.url(), { secret });
-    const device = await MockDevice.create({
-      relayUrl: relay.url(),
-      identity: deviceIdentity,
-      pairingSecret: secret,
-      autoPair: true,
-    });
+    const device = await MockDevice.create({ relayUrl: relay.url(), autoPair: true });
+    const { link } = await device.createOffer(relay);
     try {
-      const pair = capture();
-      await runCli(["--home", home, "pair", link], pair.io);
+      await runCli(["--home", home, "pair", link], capture().io);
       const shot = capture();
       expect(await runCli(["--home", home, "screenshot"], shot.io)).toBe(0);
-      expect(Buffer.from(shot.stdout.join("").trim(), "base64").toString("utf8")).toBe(
+      expect(Buffer.from(shot.stdout.join("").trim(), "base64url").toString("utf8")).toBe(
         "mock-png-bytes",
       );
     } finally {

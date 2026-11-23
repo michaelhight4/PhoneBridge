@@ -12,6 +12,7 @@ import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { PhoneBridgeClient } from "../client/client.js";
 import { PhoneBridgeError, isPhoneBridgeError } from "../client/errors.js";
+import { fromBase64Loose, toBase64Url } from "../client/bytes.js";
 import { normalizeLevel, type PermissionLevel } from "../client/levels.js";
 import { PERMISSION_LEVELS } from "../client/keystore.js";
 import { VERSION } from "../server/version.js";
@@ -257,7 +258,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
         const mime = typeof result["mime"] === "string" ? result["mime"] : "image/png";
         const output = stringFlag(flags, "--output") ?? stringFlag(flags, "-o");
         if (output !== undefined) {
-          const bytes = Buffer.from(data, "base64");
+          const bytes = Buffer.from(fromBase64Loose(data));
           await writeFile(output, bytes);
           io.out(
             `${JSON.stringify(
@@ -420,7 +421,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
         } else if (file !== undefined) {
           const { readFile } = await import("node:fs/promises");
           const bytes = await readFile(file);
-          args["data_b64"] = bytes.toString("base64");
+          args["data_b64"] = toBase64Url(bytes);
           args["name"] = file.split(/[\\/]/).pop() ?? "app.apk";
         }
         return printResult(
@@ -461,7 +462,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
               path,
               ...(stringFlag(flags, "--data-b64") === undefined
                 ? {}
-                : { data_b64: stringFlag(flags, "--data-b64") }),
+                : { data_b64: toBase64Url(fromBase64Loose(stringFlag(flags, "--data-b64") as string)) }),
             },
             { ...requestOptions(device, timeoutMs), timeoutMs: timeoutMs ?? 60_000 },
           ),

@@ -1,26 +1,31 @@
 /**
- * High-level bot client: keystore + pairing + one live session per device.
+ * High-level bot client: keystore + pairing exchange + one Noise session per device.
  *
- * Both the MCP server and the CLI are thin wrappers around this class.
+ * Pairing (docs/PROTOCOL.md 5.3/5.4) is a sealed request/response over relay `route` envelopes, before
+ * any Noise session exists. After the phone shows "Allow this bot?" and answers, the bot opens Noise
+ * `XX` with the device and pins the paired static key.
  */
-import { toBase64Url } from "./bytes.js";
-import { fingerprintForPeerId } from "./crypto.js";
+import { fromBase64Loose, fromUtf8, toBase64Url, utf8 } from "./bytes.js";
+import { fingerprintForPeerId, type Identity } from "./crypto.js";
 import { DeviceSession, targetFromStored, type DeviceTarget, type RequestOptions } from "./session.js";
 import { Keystore, type PermissionLevel, type StoredDevice } from "./keystore.js";
 import { normalizeLevel } from "./levels.js";
 import { PhoneBridgeError, isPhoneBridgeError } from "./errors.js";
+import {
+  openPairingPayload,
+  pairingRequestAad,
+  pairingResultAad,
+  sealPairingPayload,
+} from "./pairingCrypto.js";
 import { parseOfferJson, parsePairingInput, type PairingOffer } from "./pairing.js";
-import { RelayConnection, type RelayConnectionOptions } from "./relay.js";
+import { RelayConnection, type Envelope, type RelayConnectionOptions } from "./relay.js";
 
 export interface ClientOptions {
-  /** Keystore directory; defaults to `$PHONEBRIDGE_HOME` or `~/.phonebridge`. */
   home?: string;
   botName?: string;
   defaultTimeoutMs?: number;
   insecureDev?: boolean;
-  /** Test seam: replaces the real WebSocket relay. */
   relayFactory?: (options: RelayConnectionOptions) => RelayConnection;
-  /** Test hook: fixed clock in ms since epoch. */
   now?: () => number;
 }
 
@@ -28,6 +33,7 @@ export interface PairOptions {
   relayUrl?: string;
   botName?: string;
   requestedLevel?: PermissionLevel;
+  /** How long to wait for the user's on-device approval. */
   timeoutMs?: number;
   /** Test hook: treat this as "now" when checking offer expiry. */
   now?: number;
@@ -38,6 +44,15 @@ export interface PairOutcome {
   level: PermissionLevel;
   deviceName: string;
   fingerprint: string;
+}
+
+interface RawPairResult {
+  v?: number;
+  ok?: boolean;
+  granted_level?: unknown;
+  device_name?: unknown;
+  device_id?: unknown;
+  reason?: unknown;
 }
 
 export class PhoneBridgeClient {
@@ -74,8 +89,8 @@ export class PhoneBridgeClient {
   }
 
   /**
-   * Pairs with a phone from any supported input (short code + relay, link, `.pbpair` file, offer JSON)
-   * and keeps the resulting session open.
+   * Pairs with a phone from a short code, link, `.pbpair` file or offer JSON, then keeps the Noise
+   * session open.
    */
   async pair(input: string, options: PairOptions = {}): Promise<PairOutcome> {
     const parsed = await parsePairingInput(input, {
@@ -84,62 +99,82 @@ export class PhoneBridgeClient {
       ...(options.now === undefined ? {} : { now: options.now }),
     });
 
-    const offer =
-      parsed.kind === "offer"
-        ? parsed.offer
-        : await this.lookupOffer(parsed.code, parsed.relayUrl, options);
-
-    const requestedLevel = options.requestedLevel ?? "control";
-    const target: DeviceTarget = {
-      peerId: offer.deviceId,
-      publicKey: offer.devicePublicKey,
-      relayUrl: offer.relay,
-      relayFingerprint: offer.relayFingerprint,
-      name: offer.deviceName ?? "Android phone",
-      level: requestedLevel,
-    };
-
-    const session = await DeviceSession.connect({
+    const initialRelayUrl = parsed.kind === "offer" ? parsed.offer.relay : parsed.relayUrl;
+    const relay = new RelayConnection({
+      url: initialRelayUrl,
+      role: "bot",
       identity: await this.keystore.identity(),
-      device: target,
-      botName: options.botName ?? this.botName,
-      pairingSecret: offer.secret,
+      relayPin: parsed.kind === "offer" ? parsed.offer.relayPin : undefined,
       ...(this.options.insecureDev === undefined ? {} : { insecureDev: this.options.insecureDev }),
-      ...(this.options.relayFactory === undefined ? {} : { relayFactory: this.options.relayFactory }),
-      ...(this.options.defaultTimeoutMs === undefined
-        ? {}
-        : { defaultTimeoutMs: this.options.defaultTimeoutMs }),
     });
 
     try {
-      const result = asRecord(await session.pairRequest(requestedLevel), "pair_result");
-      if (result["ok"] === false) {
-        const reason = String(result["reason"] ?? "denied");
-        throw new PhoneBridgeError(
-          reason === "expired" ? "expired" : "permission_denied",
-          `the device refused the pairing request: ${reason}`,
-          { reason },
-        );
+      await relay.connect();
+      const offer =
+        parsed.kind === "offer" ? parsed.offer : await this.lookupOffer(relay, parsed.code, options);
+
+      const identity = await this.keystore.identity();
+      const requestedLevel = options.requestedLevel ?? "control";
+      const botName = options.botName ?? this.botName;
+      const result = await this.exchangePairing(
+        relay,
+        offer,
+        identity,
+        botName,
+        requestedLevel,
+        options.timeoutMs ?? 120_000,
+      );
+
+      if (result.ok !== true) {
+        const reason = typeof result.reason === "string" ? result.reason : "denied";
+        throw new PhoneBridgeError(reasonErrorCode(reason), `the device refused the pairing request: ${reason}`, {
+          reason,
+        });
       }
-      const granted = normalizeLevel(result["granted_level"], requestedLevel);
+      if (typeof result.device_id === "string" && result.device_id !== offer.deviceId) {
+        throw new PhoneBridgeError("handshake_failed", "pair_result came from a different device", {
+          expected: offer.deviceId,
+          actual: result.device_id,
+        });
+      }
+
+      const granted = normalizeLevel(result.granted_level, requestedLevel);
       const deviceName =
-        typeof result["device_name"] === "string" && result["device_name"].trim() !== ""
-          ? result["device_name"]
-          : target.name;
+        typeof result.device_name === "string" && result.device_name.trim() !== ""
+          ? result.device_name
+          : offer.deviceName ?? "Android phone";
+
+      const target: DeviceTarget = {
+        peerId: offer.deviceId,
+        publicKey: offer.devicePublicKey,
+        relayUrl: offer.relay,
+        relayPin: offer.relayPin,
+        name: deviceName,
+        level: granted,
+      };
+
+      const session = await DeviceSession.connect({
+        identity,
+        device: target,
+        botName,
+        relay,
+        ...(this.options.defaultTimeoutMs === undefined
+          ? {}
+          : { defaultTimeoutMs: this.options.defaultTimeoutMs }),
+      });
+
       const record: StoredDevice = {
         peerId: offer.deviceId,
         name: deviceName,
         publicKey: toBase64Url(offer.devicePublicKey),
         relayUrl: offer.relay,
-        ...(offer.relayFingerprint === undefined ? {} : { relayFingerprint: offer.relayFingerprint }),
+        ...(offer.relayPin === undefined ? {} : { relayPin: offer.relayPin }),
         level: granted,
         pairedAt: new Date(this.now()).toISOString(),
-        botName: options.botName ?? this.botName,
+        botName,
       };
       await this.keystore.upsertDevice(record);
       await this.keystore.save();
-      session.device.level = granted;
-      session.device.name = deviceName;
       this.replaceSession(session);
       return {
         device: record,
@@ -148,12 +183,12 @@ export class PhoneBridgeClient {
         fingerprint: fingerprintForPeerId(offer.deviceId),
       };
     } catch (error) {
-      session.close("pairing failed");
+      relay.close();
       throw error;
     }
   }
 
-  /** Opens (or reuses) a session with a paired device. */
+  /** Opens (or reuses) a Noise session with a paired device. */
   async connect(ref?: string, options: { handshakeTimeoutMs?: number } = {}): Promise<DeviceSession> {
     const record = this.keystore.resolve(ref);
     if (this.session !== undefined && this.session.device.peerId === record.peerId && this.session.isReady) {
@@ -231,34 +266,83 @@ export class PhoneBridgeClient {
   }
 
   private async lookupOffer(
+    relay: RelayConnection,
     code: string,
-    relayUrl: string,
     options: PairOptions,
   ): Promise<PairingOffer> {
-    const relay = new RelayConnection({
-      url: relayUrl,
-      role: "bot",
-      identity: await this.keystore.identity(),
+    const lookup = await relay.lookupPairing(code, options.timeoutMs ?? 10_000);
+    return parseOfferJson(JSON.stringify(lookup.offer), {
       ...(this.options.insecureDev === undefined ? {} : { insecureDev: this.options.insecureDev }),
+      ...(options.now === undefined ? {} : { now: options.now }),
     });
+  }
+
+  /** Sealed `pair_request` / `pair_result` exchange (no Noise session yet). */
+  private async exchangePairing(
+    relay: RelayConnection,
+    offer: PairingOffer,
+    identity: Identity,
+    botName: string,
+    requestedLevel: PermissionLevel,
+    timeoutMs: number,
+  ): Promise<RawPairResult> {
+    const request = {
+      v: 1,
+      bot_name: botName,
+      bot_pub: toBase64Url(identity.publicKey),
+      requested_level: requestedLevel,
+      bot_id: identity.peerId,
+    };
+    const sealed = await sealPairingPayload(
+      offer.secret,
+      pairingRequestAad(offer.devicePublicKey),
+      utf8(JSON.stringify(request)),
+    );
+
+    const pendingReply = this.waitForRoute(relay, offer.deviceId, timeoutMs);
+    relay.sendRoute(offer.deviceId, sealed);
+    const reply = await pendingReply;
+
+    const opened = await openPairingPayload(
+      offer.secret,
+      pairingResultAad(offer.devicePublicKey),
+      reply,
+    );
+    let result: RawPairResult;
     try {
-      await relay.connect();
-      const payload = await relay.lookupPairing(code, options.timeoutMs ?? 10_000);
-      return parseOfferJson(payload, {
-        ...(options.now === undefined ? {} : { now: options.now }),
-      });
-    } catch (error) {
-      if (isPhoneBridgeError(error) && error.code === "timeout") {
-        throw new PhoneBridgeError(
-          "expired",
-          "the pairing code was not found on the relay (codes expire after 10 minutes)",
-          { code },
-        );
-      }
-      throw error;
-    } finally {
-      relay.close();
+      result = JSON.parse(fromUtf8(opened)) as RawPairResult;
+    } catch {
+      throw new PhoneBridgeError("handshake_failed", "device sent a pair_result that is not JSON");
     }
+    return result;
+  }
+
+  private waitForRoute(relay: RelayConnection, from: string, timeoutMs: number): Promise<Uint8Array> {
+    return new Promise<Uint8Array>((resolve, reject) => {
+      let unsubscribe: () => void = () => undefined;
+      const timer = setTimeout(() => {
+        unsubscribe();
+        reject(
+          new PhoneBridgeError(
+            "timeout",
+            `the device did not answer the pairing request within ${timeoutMs} ms (did the user tap Allow?)`,
+          ),
+        );
+      }, timeoutMs);
+      unsubscribe = relay.onEnvelope((envelope: Envelope) => {
+        if (envelope.from !== from) return;
+        if (typeof envelope.payload !== "string") return;
+        let payload: Uint8Array;
+        try {
+          payload = fromBase64Loose(envelope.payload);
+        } catch {
+          return;
+        }
+        clearTimeout(timer);
+        unsubscribe();
+        resolve(payload);
+      });
+    });
   }
 
   private now(): number {
@@ -266,9 +350,18 @@ export class PhoneBridgeClient {
   }
 }
 
-function asRecord(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null) {
-    throw new PhoneBridgeError("internal", `${label} was not an object`);
+function reasonErrorCode(reason: string): "permission_denied" | "expired" | "handshake_failed" {
+  switch (reason) {
+    case "expired":
+    case "used":
+    case "unknown_code":
+      return "expired";
+    case "bad_secret":
+    case "bad_request":
+      return "handshake_failed";
+    default:
+      return "permission_denied";
   }
-  return value as Record<string, unknown>;
 }
+
+export { isPhoneBridgeError };

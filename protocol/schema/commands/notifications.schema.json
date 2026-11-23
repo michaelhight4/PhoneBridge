@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/commands/notifications.schema.json",
+  "title": "notifications command",
+  "description": "Args and result for notifications (level: View).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "args",
+    "result"
+  ],
+  "properties": {
+    "args": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "since": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "pkg",
+              "title",
+              "text",
+              "time"
+            ],
+            "properties": {
+              "pkg": {
+                "type": "string"
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "time": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {}
+}

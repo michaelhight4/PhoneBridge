@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneBridge</string>
+
+    <string name="accessibility_service_label">PhoneBridge device control</string>
+    <string name="accessibility_service_summary">Lets a bot you paired see this screen and tap, swipe and type for you.</string>
+    <string name="accessibility_service_description">PhoneBridge uses accessibility to read the screen and to perform taps, swipes and typing for the AI bot you paired with this phone. It only works while this service is enabled, only paired bots can send commands, and one bot drives at a time. Turn it off here at any time.</string>
+
+    <string name="main_title">PhoneBridge</string>
+    <string name="main_subtitle">Let your own AI bot use this phone. No central server, end-to-end encrypted.</string>
+    <string name="main_bridge_stopped">Bridge: OFF</string>
+    <string name="main_bridge_running">Bridge: ON</string>
+    <string name="main_no_controller">No bot in control</string>
+    <string name="main_start_bridge">Start the bridge</string>
+    <string name="main_stop_bridge">Stop the bridge</string>
+    <string name="main_service_enabled">Device control: ON</string>
+    <string name="main_service_disabled">Device control: OFF</string>
+    <string name="main_service_hint">PhoneBridge needs the accessibility service to see the screen and to tap, swipe and type. Android asks you to switch it on yourself.</string>
+    <string name="main_open_settings">Open accessibility settings</string>
+    <string name="main_onboarding">Set-up checklist</string>
+    <string name="main_pair_bot">Pair a bot</string>
+    <string name="main_bots">Paired bots</string>
+    <string name="main_log">Activity log</string>
+    <string name="main_relay">Relay (the heart)</string>
+    <string name="main_test_read">Test screen read</string>
+    <string name="main_test_result_placeholder">Press the test button to check what a bot would see.</string>
+    <string name="main_test_result_disabled">Device control is off, so there is nothing to read. Turn on the accessibility service first.</string>
+    <string name="main_footer">Only bots you pair can send commands. One bot is in control at a time, and you can stop everything from the notification.</string>
+
+    <string name="notification_subtext">End-to-end encrypted</string>
+    <string name="channel_bridge_name">Bridge status</string>
+    <string name="channel_bridge_description">Always shows which bot is in control of this phone.</string>
+    <string name="channel_approval_name">Pairing requests</string>
+    <string name="channel_approval_description">Asks you before a new bot is allowed to control this phone.</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_kick_everyone">Kick everyone</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_deny">Deny</string>
+    <string name="action_review">Review</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_unpair">Unpair</string>
+
+    <string name="approval_title">Allow this bot?</string>
+    <string name="approval_notification_text">%1$s (%2$s) asks for %3$s. %4$d s left.</string>
+    <string name="approval_name_format">%1$s</string>
+    <string name="approval_fingerprint_format">Fingerprint %1$s</string>
+    <string name="approval_requested_format">Requested level: %1$s</string>
+    <string name="approval_countdown_format">This code expires in %1$d:%2$02d</string>
+    <string name="approval_expired">This request expired. Ask the bot for a new pairing code.</string>
+    <string name="approval_level_title">Permission level</string>
+    <string name="approval_level_hint">You can lower the level, never raise it above what the bot asked for. View only reads; Control adds taps, swipes and typing; Full adds shell, settings, apps and moving the relay.</string>
+    <string name="approval_allowed">Allowed at %1$s</string>
+    <string name="approval_denied">Denied. The bot was not paired.</string>
+    <string name="approval_gone">This request is no longer pending.</string>
+
+    <string name="level_view">View — screenshots, screen tree, notifications</string>
+    <string name="level_control">Control — plus tap, swipe, type, keys, apps</string>
+    <string name="level_full">Full — plus shell, settings, APKs, relay</string>
+
+    <string name="pairing_title">Pair a bot</string>
+    <string name="pairing_hint">Show this code to your bot, or send it the link or the .pbpair file. The secret is one-time and dies after ten minutes. Nothing is allowed until you tap Allow on this phone.</string>
+    <string name="pairing_qr_description">Pairing QR code</string>
+    <string name="pairing_share_link">Share link</string>
+    <string name="pairing_export_file">Export .pbpair file</string>
+    <string name="pairing_regenerate">Regenerate code</string>
+    <string name="pairing_footer">The QR code contains the pairing link. The short code works through the relay; the file works when you send it in chat.</string>
+    <string name="pairing_countdown_format">Expires in %1$d:%2$02d</string>
+    <string name="pairing_expired">This code expired. Generate a new one.</string>
+    <string name="pairing_relay_format">Relay: %1$s</string>
+    <string name="pairing_share_title">Pair this phone with your bot</string>
+    <string name="pairing_export_name">phonebridge-%1$s.pbpair</string>
+    <string name="pairing_export_done">Pairing file saved</string>
+    <string name="pairing_not_running">Start the bridge first, then pair a bot.</string>
+
+    <string name="bots_title">Paired bots</string>
+    <string name="bots_hint">Like Bluetooth devices. Switch one off to close its session, lower its level, or unpair it. Unpairing one bot never touches the others.</string>
+    <string name="bots_empty">No bots paired yet. Pair one from the main screen.</string>
+    <string name="bots_change_level">Change level</string>
+    <string name="bots_unpair">Unpair</string>
+    <string name="bots_meta_format">Last seen: %1$s · %2$s</string>
+    <string name="bots_state_connected">connected</string>
+    <string name="bots_state_in_control">in control</string>
+    <string name="bots_state_waiting">waiting (%1$d)</string>
+    <string name="bots_state_offline">offline</string>
+    <string name="bots_state_switched_off">switched off</string>
+    <string name="bots_unpair_title">Unpair %1$s?</string>
+    <string name="bots_unpair_message">This removes the bot's key and closes its session. Other bots keep working.</string>
+    <string name="bots_kick_title">Kick everyone?</string>
+    <string name="bots_kick_message">Every live session is closed and the control queue is cleared. Paired keys stay, so bots can reconnect and ask again.</string>
+    <string name="bots_level_title">Permission level for %1$s</string>
+    <string name="bots_kicked">Kicked %1$d bot(s)</string>
+
+    <string name="log_title">Activity log</string>
+    <string name="log_empty">No commands yet.</string>
+    <string name="log_clear">Clear log</string>
+    <string name="log_clear_title">Clear the activity log?</string>
+    <string name="log_clear_message">This only deletes the log on this phone; paired bots stay paired.</string>
+    <string name="log_filter_all">All bots</string>
+
+    <string name="relay_title">Relay (the heart)</string>
+    <string name="relay_hint">The relay forwards encrypted envelopes between this phone and your bots. It can beat here, on your PC, or on a small server you run. Turn it off and remote access stops.</string>
+    <string name="relay_this_phone">This phone</string>
+    <string name="relay_my_pc">My PC</string>
+    <string name="relay_custom">A custom URL</string>
+    <string name="relay_url_hint">wss://host:port</string>
+    <string name="relay_pin_hint">Certificate pin (optional, base64url)</string>
+    <string name="relay_pin_hint_long">Self-signed relays show a short certificate pin when they start. Paste it here so the phone knows it is talking to your relay.</string>
+    <string name="relay_save">Save relay choice</string>
+    <string name="relay_move_here">Move heart here</string>
+    <string name="relay_saved">Saved</string>
+    <string name="relay_not_running">Start the bridge first to move the heart here.</string>
+    <string name="relay_status_format">%1$s\n%2$s</string>
+
+    <string name="onboarding_title">Set-up checklist</string>
+    <string name="onboarding_hint">Three Android permissions make PhoneBridge work. Android asks for each one itself; this screen only takes you there and shows what is still missing.</string>
+    <string name="onboarding_accessibility">1. Accessibility service</string>
+    <string name="onboarding_accessibility_detail">Lets paired bots read the screen and tap, swipe and type.</string>
+    <string name="onboarding_notifications">2. Notifications</string>
+    <string name="onboarding_notifications_detail">Shows the bot in control and asks before a new bot is allowed.</string>
+    <string name="onboarding_battery">3. Battery optimisation</string>
+    <string name="onboarding_battery_detail">Keeps the encrypted connection alive while the screen is off.</string>
+    <string name="onboarding_open">Open settings</string>
+    <string name="onboarding_done">Done</string>
+    <string name="onboarding_missing">Not set up yet</string>
+
+    <string name="status_controller_format">%1$s is in control</string>
+</resources>

@@ -1,19 +1,16 @@
 /**
- * Pairing input parsing.
+ * Pairing offer parsing and the three transfer forms, per docs/PROTOCOL.md section 5.
  *
- * Accepted forms (all produce the same offer):
- *   - link:  phonebridge://pair?d=<base64url(offer JSON)>
- *   - file:  a `.pbpair` file (or a path to one) containing the offer JSON
- *   - JSON:  the offer object itself, pasted as text
- *   - code:  `7K4-Q9M` plus a relay URL (flag, env `PHONEBRIDGE_RELAY`, or the default LAN relay)
- *
- * The offer is one-time and expires 10 minutes after the device created it.
+ *   link: phonebridge://pair?d=<base64url(UTF-8 offer JSON)>
+ *   file: .pbpair, UTF-8 offer JSON (BOM tolerated)
+ *   JSON: the offer object itself
+ *   code: `7K4-Q9B` plus a relay URL (the bot asks the relay for the offer)
  */
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { fromBase64, fromBase64Url, toBase64Url } from "./bytes.js";
+import { fromBase64Loose, toBase64Url, utf8 } from "./bytes.js";
 import { peerIdForPublicKey } from "./crypto.js";
-import { parseCode } from "./codes.js";
+import { formatCode, parseCode } from "./codes.js";
 import { PhoneBridgeError } from "./errors.js";
 
 export const OFFER_VERSION = 1;
@@ -25,11 +22,11 @@ export interface RawPairingOffer {
   device_id: string;
   device_pub: string;
   secret: string;
-  code?: string;
+  code: string;
   exp: number;
-  relay_fp?: string;
   device_name?: string;
-  name?: string;
+  /** Base64url SHA-256 of the relay's DER certificate (relay/PROTOCOL-RELAY.md section 0). */
+  relay_pin?: string;
 }
 
 export interface PairingOffer {
@@ -39,7 +36,7 @@ export interface PairingOffer {
   secret: Uint8Array;
   code: string;
   expiresAt: number;
-  relayFingerprint: string | undefined;
+  relayPin: string | undefined;
   deviceName: string | undefined;
   raw: RawPairingOffer;
 }
@@ -51,9 +48,7 @@ export type ParsedPairingInput =
   | { kind: "code"; code: string; relayUrl: string; source: "code" };
 
 export interface ParseOptions {
-  /** Relay URL used when the input is a bare short code. */
   relayUrl?: string;
-  /** Allow `ws://` relays (loopback and tests only). */
   insecureDev?: boolean;
   /** Test hook: treat this as "now" (ms since epoch). */
   now?: number;
@@ -64,15 +59,13 @@ export interface ParseOptions {
 const LINK_PREFIX = "phonebridge://";
 
 export function encodePairingLink(offer: RawPairingOffer): string {
-  const json = Buffer.from(JSON.stringify(offer), "utf8").toString("base64url");
-  return `${LINK_PREFIX}pair?d=${json}`;
+  return `${LINK_PREFIX}pair?d=${toBase64Url(utf8(JSON.stringify(offer)))}`;
 }
 
 export function encodePairingFile(offer: RawPairingOffer): string {
   return `${JSON.stringify(offer, null, 2)}\n`;
 }
 
-/** Parses any supported pairing input. Throws PhoneBridgeError with `bad_input`/`bad_offer`/`expired`. */
 export async function parsePairingInput(
   input: string,
   options: ParseOptions = {},
@@ -92,7 +85,7 @@ export async function parsePairingInput(
     const contents = await readFile(value, "utf8");
     return { kind: "offer", offer: await parseOfferJson(contents, options), source: "file" };
   }
-  if (/^[0-9A-Za-z]{3}-?[0-9A-Za-z]{3}$/.test(value)) {
+  if (!value.includes("/") && !value.includes("\\") && !value.includes(".") && !/\s/.test(value)) {
     return parseShortCode(value, options);
   }
   throw new PhoneBridgeError(
@@ -113,18 +106,16 @@ async function parseLink(link: string, options: ParseOptions): Promise<PairingOf
   } catch {
     throw new PhoneBridgeError("bad_input", "pairing link is not a valid URL");
   }
-  const host = url.hostname.toLowerCase();
-  if (url.protocol !== "phonebridge:" || (host !== "pair" && url.hostname !== "")) {
-    throw new PhoneBridgeError("bad_input", `unexpected pairing link target: ${url.protocol}//${host}`);
+  if (url.protocol !== "phonebridge:") {
+    throw new PhoneBridgeError("bad_input", `unexpected pairing link scheme: ${url.protocol}`);
   }
-  // URL parses phonebridge://pair?d=... with hostname "pair" and, for phonebridge:///pair, pathname /pair.
   const payload = url.searchParams.get("d");
   if (payload === null || payload === "") {
     throw new PhoneBridgeError("bad_input", "pairing link has no d= payload");
   }
   let json: string;
   try {
-    json = Buffer.from(payload, "base64url").toString("utf8");
+    json = Buffer.from(fromBase64Loose(payload)).toString("utf8");
   } catch {
     throw new PhoneBridgeError("bad_input", "pairing link payload is not base64url");
   }
@@ -132,9 +123,11 @@ async function parseLink(link: string, options: ParseOptions): Promise<PairingOf
 }
 
 export async function parseOfferJson(json: string, options: ParseOptions = {}): Promise<PairingOffer> {
+  // `.pbpair` files created on Windows may start with a UTF-8 BOM.
+  const text = json.replace(/^\uFEFF/, "");
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json) as unknown;
+    parsed = JSON.parse(text) as unknown;
   } catch {
     throw new PhoneBridgeError("bad_input", "pairing offer is not valid JSON");
   }
@@ -145,13 +138,10 @@ export async function parseOfferJson(json: string, options: ParseOptions = {}): 
   const candidate =
     typeof wrapper["offer"] === "object" && wrapper["offer"] !== null
       ? (wrapper["offer"] as Record<string, unknown>)
-      : typeof wrapper["pairing"] === "object" && wrapper["pairing"] !== null
-        ? (wrapper["pairing"] as Record<string, unknown>)
-        : wrapper;
+      : wrapper;
 
-  const v = candidate["v"];
-  if (v !== OFFER_VERSION) {
-    throw new PhoneBridgeError("bad_offer", `unsupported pairing offer version: ${String(v)}`, {
+  if (candidate["v"] !== OFFER_VERSION) {
+    throw new PhoneBridgeError("bad_offer", `unsupported pairing offer version: ${String(candidate["v"])}`, {
       supported: OFFER_VERSION,
     });
   }
@@ -161,11 +151,14 @@ export async function parseOfferJson(json: string, options: ParseOptions = {}): 
   const devicePublicKey = decodeKey(candidate["device_pub"], "device_pub");
   const secret = decodeKey(candidate["secret"], "secret");
   const expiresAt = requireExpiry(candidate["exp"]);
-  const relayFingerprint = optionalString(candidate["relay_fp"]);
-  const deviceName = optionalString(candidate["device_name"]) ?? optionalString(candidate["name"]);
+  const relayPin = optionalString(candidate["relay_pin"]);
+  const deviceName = optionalString(candidate["device_name"]);
 
   const codeValue = optionalString(candidate["code"]);
-  const code = codeValue === undefined ? "" : parseCode(codeValue).code;
+  if (codeValue === undefined) {
+    throw new PhoneBridgeError("bad_offer", "pairing offer is missing code");
+  }
+  const code = parseCode(codeValue).code;
 
   if (options.now !== undefined && options.allowExpired !== true && expiresAt <= options.now) {
     throw new PhoneBridgeError("expired", "pairing offer has expired; create a new one on the phone", {
@@ -175,14 +168,21 @@ export async function parseOfferJson(json: string, options: ParseOptions = {}): 
 
   const expectedId = peerIdForPublicKey(devicePublicKey);
   if (deviceId !== expectedId) {
-    throw new PhoneBridgeError(
-      "bad_offer",
-      "pairing offer device_id does not match the hash of device_pub",
-      { expected: expectedId },
-    );
+    throw new PhoneBridgeError("bad_offer", "pairing offer device_id does not match the hash of device_pub", {
+      expected: expectedId,
+    });
   }
 
   normalizeRelayUrl(relay, options.insecureDev);
+
+  if (relayPin !== undefined) {
+    const pin = fromBase64Loose(relayPin);
+    if (pin.length !== 32) {
+      throw new PhoneBridgeError("bad_offer", "relay_pin must be a SHA-256 fingerprint", {
+        length: pin.length,
+      });
+    }
+  }
 
   const raw: RawPairingOffer = {
     v: OFFER_VERSION,
@@ -190,34 +190,34 @@ export async function parseOfferJson(json: string, options: ParseOptions = {}): 
     device_id: deviceId,
     device_pub: toBase64Url(devicePublicKey),
     secret: toBase64Url(secret),
+    code,
     exp: Math.floor(expiresAt / 1000),
-    ...(code === "" ? {} : { code }),
-    ...(relayFingerprint === undefined ? {} : { relay_fp: relayFingerprint }),
     ...(deviceName === undefined ? {} : { device_name: deviceName }),
+    ...(relayPin === undefined ? {} : { relay_pin: relayPin }),
   };
 
-  return { relay, deviceId, devicePublicKey, secret, code, expiresAt, relayFingerprint, deviceName, raw };
+  return {
+    relay,
+    deviceId,
+    devicePublicKey,
+    secret,
+    code,
+    expiresAt,
+    relayPin,
+    deviceName,
+    raw,
+  };
 }
 
 function parseShortCode(value: string, options: ParseOptions): ParsedPairingInput {
   const { code } = parseCode(value);
   const relayUrl =
-    options.relayUrl ??
-    process.env["PHONEBRIDGE_RELAY"] ??
-    "wss://relay.phonebridge.local:8765";
+    options.relayUrl ?? process.env["PHONEBRIDGE_RELAY"] ?? "wss://relay.phonebridge.local:8765";
   normalizeRelayUrl(relayUrl, options.insecureDev);
   return { kind: "code", code, relayUrl, source: "code" };
 }
 
-/** Rebuilds a full offer from a relay `pair_offer` reply (short-code path). */
-export async function offerFromRelayReply(
-  payloadJson: string,
-  options: ParseOptions = {},
-): Promise<PairingOffer> {
-  return parseOfferJson(payloadJson, options);
-}
-
-function requireString(record: Record<string, unknown>, field: string): string {
+export function requireString(record: Record<string, unknown>, field: string): string {
   const value = record[field];
   if (typeof value !== "string" || value.trim() === "") {
     throw new PhoneBridgeError("bad_offer", `pairing offer is missing ${field}`);
@@ -234,7 +234,6 @@ function requireExpiry(value: unknown): number {
   if (!Number.isFinite(seconds) || seconds <= 0) {
     throw new PhoneBridgeError("bad_offer", "pairing offer is missing a valid exp (unix seconds)");
   }
-  // Values below 1e12 are seconds; larger values are already milliseconds (tolerated).
   return seconds < 1e12 ? seconds * 1000 : seconds;
 }
 
@@ -242,13 +241,11 @@ function decodeKey(value: unknown, field: string): Uint8Array {
   if (typeof value !== "string" || value === "") {
     throw new PhoneBridgeError("bad_offer", `pairing offer is missing ${field}`);
   }
-  let bytes = fromBase64Url(value);
-  if (bytes.length !== 32) {
-    try {
-      bytes = fromBase64(value);
-    } catch {
-      /* fall through to the length error */
-    }
+  let bytes: Uint8Array;
+  try {
+    bytes = fromBase64Loose(value);
+  } catch {
+    throw new PhoneBridgeError("bad_offer", `${field} is not valid base64`);
   }
   if (bytes.length !== 32) {
     throw new PhoneBridgeError("bad_offer", `${field} must be 32 bytes`, { length: bytes.length });
@@ -276,7 +273,7 @@ export function normalizeRelayUrl(url: string, insecureDev = false): string {
   throw new PhoneBridgeError("bad_input", `unsupported relay URL scheme: ${parsed.protocol}`);
 }
 
-/** Removes the payload of a pairing link/offer so it can be logged safely. */
+/** Removes the pairing payload from a link/offer so it can be logged safely. */
 export function redact(value: string): string {
   if (value.length <= 24) return value;
   return `${value.slice(0, 12)}…${value.slice(-6)}`;
@@ -285,3 +282,5 @@ export function redact(value: string): string {
 export function isPairingLink(value: string): boolean {
   return value.trim().toLowerCase().startsWith(LINK_PREFIX);
 }
+
+export { formatCode };

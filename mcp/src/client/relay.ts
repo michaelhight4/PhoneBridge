@@ -1,45 +1,49 @@
 /**
- * Relay transport: a WebSocket connection to the PhoneBridge relay.
+ * Relay transport, matching `relay/PROTOCOL-RELAY.md` and `core/.../crypto/HelloAuth.kt`.
  *
- * The relay only forwards opaque envelopes. This module implements the relay handshake from
- * docs/PROTOCOL.md, concretized as:
- *   1. peer -> relay  { v:1, type:"hello", from, pub, role, id }
- *   2. relay -> peer  { v:1, type:"hello_challenge", challenge:<b64url 32B>, id }
- *   3. peer -> relay  { v:1, type:"hello_proof", from, proof:<b64url 32B>, id }
- *   4. relay -> peer  { v:1, type:"hello_ok", peer_id, id }
- *   proof = X25519(peer long-term secret, challenge point). The relay holds the challenge scalar and
- *   checks X25519(challenge, peer public key) equals the proof, so key ownership is proved without
- *   sending any secret.
+ *   peer                                relay
+ *    | -------- WebSocket upgrade -------> |
+ *    | <------------- challenge ---------- |   nonce, per-connection relay_pub, relay_id
+ *    | ---------------- hello -----------> |   pub, nonce echo, dh-hmac-sha256 sig
+ *    | <------------- hello_ok ----------- |
+ *    | <============= route =============> |   opaque end-to-end frames only
  *
- * A relay may answer `hello` directly with `hello_ok`. `wss://` relays are pinned with their
- * SHA-256 certificate fingerprint when the pairing offer carries `relay_fp`.
+ * `wss://` relays are pinned when the pairing offer carries `relay_pin`.
  */
 import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { ConnectionOptions } from "node:tls";
 import WebSocket, { type ClientOptions } from "ws";
-import { fromBase64Url, fromUtf8, toBase64Url } from "./bytes.js";
-import { x25519, type Identity } from "./crypto.js";
+import { fromBase64Loose, toBase64Url, utf8 } from "./bytes.js";
+import type { Identity } from "./crypto.js";
+import { helloProof, parseChallenge, HELLO_PROOF_METHOD } from "./helloAuth.js";
 import { PhoneBridgeError, remoteError } from "./errors.js";
 import { normalizeRelayUrl } from "./pairing.js";
 
 export interface Envelope {
-  v: number;
+  v?: number;
   type: string;
   from?: string;
   to?: string;
   id?: string;
   payload?: string;
+  pub?: string;
+  sig?: string;
+  role?: string;
+  nonce?: string;
+  relay_pub?: string;
+  relay_id?: string;
+  proof?: string;
+  expires?: number;
+  move_token?: string;
+  peer?: string;
+  server_time?: number;
+  limits?: Record<string, unknown>;
+  error?: { code?: string; message?: string } | string;
   code?: string;
-  message?: string;
+  offer?: Record<string, unknown>;
   new_url?: string;
   token?: string;
-  expires?: number;
-  challenge?: string;
-  nonce?: string;
-  peer_id?: string;
-  pub?: string;
-  proof?: string;
-  role?: string;
   [key: string]: unknown;
 }
 
@@ -47,9 +51,24 @@ export interface RelayConnectionOptions {
   url: string;
   role: "bot" | "device";
   identity: Identity;
-  relayFingerprint?: string | undefined;
+  /** Base64url (or hex) SHA-256 of the relay certificate, from the pairing offer's `relay_pin`. */
+  relayPin?: string | undefined;
   insecureDev?: boolean;
   connectTimeoutMs?: number;
+  /** How long to wait for the relay's challenge/hello_ok (docs: 30 s). */
+  helloTimeoutMs?: number;
+}
+
+export interface RelayInfo {
+  relayId: string | undefined;
+  limits: Record<string, unknown> | undefined;
+  moved: boolean;
+}
+
+export interface PairingLookup {
+  code: string;
+  offer: Record<string, unknown>;
+  expires: number | undefined;
 }
 
 type Handler<T> = (value: T) => void;
@@ -69,11 +88,11 @@ export class RelayConnection {
   private buffered: Envelope[] = [];
   private ready = false;
   private closed = false;
+  private info: RelayInfo = { relayId: undefined, limits: undefined, moved: false };
   private envelopeHandlers = new Set<Handler<Envelope>>();
-  private errorHandlers = new Set<Handler<Envelope>>();
+  private errorHandlers = new Set<Handler<PhoneBridgeError>>();
   private moveHandlers = new Set<Handler<Envelope>>();
   private closeHandlers = new Set<Handler<{ code: number; reason: string }>>();
-  private serverFingerprint: string | undefined;
 
   constructor(options: RelayConnectionOptions) {
     this.options = options;
@@ -88,8 +107,8 @@ export class RelayConnection {
     return this.closed;
   }
 
-  get observedServerFingerprint(): string | undefined {
-    return this.serverFingerprint;
+  get relayId(): string | undefined {
+    return this.info.relayId;
   }
 
   onEnvelope(handler: Handler<Envelope>): () => void {
@@ -97,7 +116,7 @@ export class RelayConnection {
     return () => this.envelopeHandlers.delete(handler);
   }
 
-  onRelayError(handler: Handler<Envelope>): () => void {
+  onRelayError(handler: Handler<PhoneBridgeError>): () => void {
     this.errorHandlers.add(handler);
     return () => this.errorHandlers.delete(handler);
   }
@@ -112,12 +131,10 @@ export class RelayConnection {
     return () => this.closeHandlers.delete(handler);
   }
 
-  async connect(): Promise<void> {
-    if (this.socket !== undefined) throw new Error("relay connection already opened");
-    const identity = this.options.identity;
-    const timeout = this.options.connectTimeoutMs ?? 15_000;
-    const socketOptions = this.socketOptions();
-    const socket = new WebSocket(this.url, socketOptions);
+  async connect(): Promise<RelayInfo> {
+    if (this.socket !== undefined) throw new PhoneBridgeError("relay_error", "relay connection already opened");
+    const timeout = this.options.connectTimeoutMs ?? 20_000;
+    const socket = new WebSocket(this.url, this.socketOptions());
     this.socket = socket;
 
     await new Promise<void>((resolve, reject) => {
@@ -143,7 +160,7 @@ export class RelayConnection {
     });
 
     try {
-      await this.doHello(identity);
+      await this.authenticate();
     } catch (error) {
       this.close();
       throw error;
@@ -152,21 +169,20 @@ export class RelayConnection {
     const pending = this.buffered;
     this.buffered = [];
     for (const message of pending) this.dispatch(message);
+    return this.info;
   }
 
   private socketOptions(): ClientOptions {
     if (!this.url.startsWith("wss:")) return {};
     const tlsOptions: ConnectionOptions = { rejectUnauthorized: true };
-    const pin = this.options.relayFingerprint;
+    const pin = this.options.relayPin;
     if (pin !== undefined && pin.trim() !== "") {
-      const expected = normalizeFingerprint(pin);
+      const expected = decodePin(pin);
       tlsOptions.checkServerIdentity = (_hostname, cert) => {
-        const raw = cert.raw;
-        const actual = createHash("sha256").update(raw).digest("hex");
-        this.serverFingerprint = actual;
-        if (actual !== expected) {
+        const actual = new Uint8Array(createHash("sha256").update(cert.raw).digest());
+        if (!bytesEq(actual, expected)) {
           return new Error(
-            `relay certificate fingerprint mismatch: expected ${expected}, got ${actual}`,
+            `relay certificate fingerprint mismatch: expected ${toBase64Url(expected)}, got ${toBase64Url(actual)}`,
           );
         }
         return undefined;
@@ -175,85 +191,85 @@ export class RelayConnection {
     return tlsOptions as unknown as ClientOptions;
   }
 
-  private async doHello(identity: Identity): Promise<void> {
-    const helloId = crypto.randomUUID();
+  private async authenticate(): Promise<void> {
+    const identity = this.options.identity;
+    const helloTimeout = this.options.helloTimeoutMs ?? 30_000;
+
+    const challengeEnvelope = await this.waitFor(
+      (message) => message.type === "challenge" || message.type === "error",
+      helloTimeout,
+      "relay challenge",
+    );
+    if (challengeEnvelope.type === "error") throw this.envelopeError(challengeEnvelope);
+
+    const challenge = parseChallenge(challengeEnvelope as unknown as Record<string, unknown>);
+    const proof = await helloProof(
+      identity.secretKey,
+      identity.publicKey,
+      challenge.relayPublicKey,
+      challenge.relayId,
+      identity.peerId,
+      challenge.nonce,
+    );
     this.sendRaw({
       v: 1,
       type: "hello",
       from: identity.peerId,
       pub: toBase64Url(identity.publicKey),
+      nonce: toBase64Url(challenge.nonce),
+      sig: toBase64Url(proof),
       role: this.options.role,
-      id: helloId,
     });
-    const reply = await this.waitFor(
-      (message) =>
-        message.type === "hello_ok" ||
-        message.peer_id !== undefined ||
-        typeof message.challenge === "string" ||
-        typeof message.nonce === "string" ||
-        message.type === "error",
-      15_000,
-      "relay hello",
+
+    const ok = await this.waitFor(
+      (message) => message.type === "hello_ok" || message.type === "error",
+      helloTimeout,
+      "relay hello_ok",
     );
-    if (reply.type === "error") throw this.envelopeError(reply);
-
-    const challengeText = reply.challenge ?? reply.nonce;
-    if (typeof challengeText === "string") {
-      const challenge = fromBase64Url(challengeText);
-      if (challenge.length < 16) {
-        throw new PhoneBridgeError("relay_error", "relay sent a short hello challenge");
-      }
-      // One-pass DH proof: the relay sends its ephemeral challenge point C = c*G. The peer answers
-      // X25519(peer secret, C); the relay checks X25519(c, peer pub) equals the same value.
-      const proof = await x25519(identity.secretKey, challenge);
-      const authId = crypto.randomUUID();
-      this.sendRaw({
-        v: 1,
-        type: "hello_proof",
-        from: identity.peerId,
-        proof: toBase64Url(proof),
-        id: authId,
-      });
-      const ack = await this.waitFor(
-        (message) => message.type === "hello_ok" || message.type === "error",
-        15_000,
-        "relay hello proof",
-      );
-      if (ack.type === "error") throw this.envelopeError(ack);
-      if (typeof ack.peer_id === "string" && ack.peer_id !== identity.peerId) {
-        throw new PhoneBridgeError("relay_error", "relay assigned a different peer_id", {
-          expected: identity.peerId,
-          actual: ack.peer_id,
-        });
-      }
-      return;
-    }
-
-    if (typeof reply.peer_id === "string" && reply.peer_id !== identity.peerId) {
-      throw new PhoneBridgeError("relay_error", "relay assigned a different peer_id", {
+    if (ok.type === "error") throw this.envelopeError(ok);
+    const peer = typeof ok.peer === "string" ? ok.peer : typeof ok.to === "string" ? ok.to : undefined;
+    if (peer !== undefined && peer !== identity.peerId) {
+      throw new PhoneBridgeError("relay_error", "relay authenticated a different peer_id", {
         expected: identity.peerId,
-        actual: reply.peer_id,
+        actual: peer,
       });
+    }
+    this.info = {
+      relayId: typeof ok.relay_id === "string" ? ok.relay_id : challenge.relayId,
+      limits: typeof ok.limits === "object" && ok.limits !== null ? ok.limits : undefined,
+      moved: false,
+    };
+    if (typeof challengeEnvelope.proof === "string" && challengeEnvelope.proof !== HELLO_PROOF_METHOD) {
+      throw new PhoneBridgeError("relay_error", "relay asked for an unsupported proof method");
     }
   }
 
-  /** Sends an encrypted payload to `to`; returns the relay envelope id for correlation. */
-  sendRoute(to: string, payload: Uint8Array): string {
-    const id = crypto.randomUUID();
+  /** Sends one end-to-end frame to `to`; returns the relay envelope id for correlation. */
+  sendRoute(to: string, frame: Uint8Array): string {
+    const id = randomUUID();
     this.sendRaw({
       v: 1,
       type: "route",
       from: this.options.identity.peerId,
       to,
       id,
-      payload: toBase64Url(payload),
+      payload: toBase64Url(frame),
     });
     return id;
   }
 
-  /** Short-code pairing: asks the relay for the pending offer. Returns the offer JSON text. */
-  async lookupPairing(code: string, timeoutMs = 10_000): Promise<string> {
-    const id = crypto.randomUUID();
+  /** Sends a non-route envelope such as `pair_store` (device role) or `ping`. */
+  sendControl(message: { type: string; [key: string]: unknown }): void {
+    const envelope = {
+      ...message,
+      from: (message["from"] as string | undefined) ?? this.options.identity.peerId,
+    } as Envelope;
+    this.sendRaw(envelope);
+  }
+
+  /** Short-code pairing: asks the relay for the offer behind a code. */
+  async lookupPairing(code: string, timeoutMs = 10_000): Promise<PairingLookup> {
+    const id = randomUUID();
     this.sendRaw({
       v: 1,
       type: "pair_lookup",
@@ -264,22 +280,36 @@ export class RelayConnection {
     const reply = await this.waitFor(
       (message) =>
         (message.type === "pair_offer" || message.type === "error") &&
-        (message.id === undefined || message.id === id || message.code !== undefined),
+        (message.id === undefined || message.id === id),
       timeoutMs,
       "pair_lookup",
     );
-    if (reply.type === "error") throw this.envelopeError(reply);
-    if (typeof reply.payload !== "string") {
-      throw new PhoneBridgeError("relay_error", "relay pair_offer reply has no payload");
+    if (reply.type === "error") {
+      const error = this.envelopeError(reply);
+      const relayCode = relayErrorCode(reply);
+      if (relayCode === "code_not_found" || relayCode === "code_expired") {
+        throw new PhoneBridgeError("expired", "the pairing code is unknown or has expired", {
+          code,
+          relayCode,
+        });
+      }
+      throw error;
     }
-    return fromUtf8(fromBase64Url(reply.payload));
+    if (typeof reply.offer !== "object" || reply.offer === null) {
+      throw new PhoneBridgeError("relay_error", "relay pair_offer reply has no offer");
+    }
+    return {
+      code: typeof reply.code === "string" ? reply.code : normalizeLookupCode(code),
+      offer: reply.offer,
+      expires: typeof reply.expires === "number" ? reply.expires : undefined,
+    };
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
     this.ready = false;
-    this.rejectWaiters(new PhoneBridgeError("relay_error", "relay connection closed"));
+    this.rejectWaiters(new PhoneBridgeError("peer_offline", "relay connection closed"));
     this.socket?.close();
     this.socket = undefined;
   }
@@ -289,7 +319,7 @@ export class RelayConnection {
     if (socket === undefined || socket.readyState !== WebSocket.OPEN) {
       throw new PhoneBridgeError("relay_error", "relay socket is not open");
     }
-    socket.send(JSON.stringify(message));
+    socket.send(JSON.stringify({ v: 1, ...message }));
   }
 
   private handleMessage(text: string): void {
@@ -306,7 +336,7 @@ export class RelayConnection {
     }
     if (message.type === "ping") {
       try {
-        this.sendRaw({ v: 1, type: "pong", id: message.id });
+        this.sendRaw({ v: 1, type: "pong", from: this.options.identity.peerId, to: message.from, id: message.id });
       } catch {
         /* socket closing */
       }
@@ -335,25 +365,27 @@ export class RelayConnection {
       case "route":
         for (const handler of this.envelopeHandlers) handler(message);
         break;
-      case "error":
-        for (const handler of this.errorHandlers) handler(message);
+      case "error": {
+        const error = this.envelopeError(message);
+        for (const handler of this.errorHandlers) handler(error);
         break;
+      }
       case "relay_moved":
+        this.info.moved = true;
         for (const handler of this.moveHandlers) handler(message);
         break;
+      case "challenge":
       case "hello_ok":
-      case "hello_challenge":
-      case "hello_proof":
+      case "pair_offer":
         break;
       default:
-        for (const handler of this.envelopeHandlers) handler(message);
+        // Unknown envelope types must be ignored, never fatal (docs/PROTOCOL.md 3.2).
+        break;
     }
   }
 
   private dispatchError(error: PhoneBridgeError): void {
-    for (const handler of this.errorHandlers) {
-      handler({ v: 1, type: "error", code: error.code, message: error.message });
-    }
+    for (const handler of this.errorHandlers) handler(error);
   }
 
   private handleClose(code: number, reason: string): void {
@@ -364,12 +396,21 @@ export class RelayConnection {
   }
 
   private envelopeError(message: Envelope): PhoneBridgeError {
-    const code = message.code ?? "relay_error";
-    const error = remoteError({ code, message: message.message ?? `relay error: ${code}` });
+    const relayCode = relayErrorCode(message) ?? "internal";
+    const text =
+      typeof message.error === "object" && message.error !== null && typeof message.error.message === "string"
+        ? message.error.message
+        : typeof message.error === "string"
+          ? message.error
+          : `relay error: ${relayCode}`;
+    if (relayCode === "peer_offline") {
+      return new PhoneBridgeError("peer_offline", text, { relayCode });
+    }
+    const mapped = remoteError({ code: relayCode, message: text });
     return new PhoneBridgeError(
-      code === "peer_offline" ? "peer_offline" : error.code,
-      error.message,
-      { relayCode: code },
+      ["permission_denied", "bad_args", "timeout", "internal"].includes(mapped.code) ? mapped.code : "relay_error",
+      text,
+      { relayCode },
     );
   }
 
@@ -378,6 +419,13 @@ export class RelayConnection {
     timeoutMs: number,
     label: string,
   ): Promise<Envelope> {
+    // A relay may send the challenge in the same tick as the upgrade; it is buffered while the
+    // socket is not marked ready, so look there before waiting.
+    const index = this.buffered.findIndex(match);
+    if (index >= 0) {
+      const [buffered] = this.buffered.splice(index, 1);
+      if (buffered !== undefined) return Promise.resolve(buffered);
+    }
     return new Promise<Envelope>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.waiters = this.waiters.filter((waiter) => waiter.timer !== timer);
@@ -397,15 +445,35 @@ export class RelayConnection {
   }
 }
 
-/** Normalizes `sha256:AB:CD:…` / hex / base64 fingerprints to lowercase hex. */
-export function normalizeFingerprint(value: string): string {
-  let text = value.trim().toLowerCase();
-  if (text.startsWith("sha256:")) text = text.slice("sha256:".length);
-  text = text.replace(/[\s:]/g, "");
-  if (/^[0-9a-f]{64}$/.test(text)) return text;
-  const decoded = fromBase64Url(value.trim());
-  if (decoded.length === 32) {
-    return Buffer.from(decoded).toString("hex");
+function relayErrorCode(message: Envelope): string | undefined {
+  if (typeof message.error === "object" && message.error !== null && typeof message.error.code === "string") {
+    return message.error.code;
   }
-  throw new PhoneBridgeError("bad_input", "relay fingerprint must be a SHA-256 hash");
+  if (typeof message.error === "string" && message.error !== "") return message.error;
+  if (typeof message.code === "string") return message.code;
+  return undefined;
 }
+
+function normalizeLookupCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+/** Accepts a base64url or hex SHA-256 pin and returns the 32 raw bytes. */
+export function decodePin(pin: string): Uint8Array {
+  const text = pin.trim();
+  if (/^[0-9a-fA-F]{64}$/.test(text)) {
+    return new Uint8Array(Buffer.from(text, "hex"));
+  }
+  const bytes = fromBase64Loose(text);
+  if (bytes.length !== 32) throw new PhoneBridgeError("bad_input", "relay pin must be a SHA-256 fingerprint");
+  return bytes;
+}
+
+function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  return diff === 0;
+}
+
+void utf8;

@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "type": "relay_moved",
+  "new_url": "wss://relay.example.com:8443",
+  "token": "one-time-token",
+  "expires": 1790000000
+}

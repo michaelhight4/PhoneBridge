@@ -7,8 +7,7 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { createIdentity, identityFromSecret, type Identity, peerIdForPublicKey } from "./crypto.js";
-import { fingerprintForPeerId } from "./crypto.js";
+import { createIdentity, identityFromSecret, fingerprintForPeerId, type Identity, peerIdForPublicKey } from "./crypto.js";
 import { fromBase64Url, toBase64Url } from "./bytes.js";
 import { PhoneBridgeError } from "./errors.js";
 
@@ -20,7 +19,8 @@ export interface StoredDevice {
   name: string;
   publicKey: string;
   relayUrl: string;
-  relayFingerprint?: string;
+  /** Base64url SHA-256 of the relay certificate (offer `relay_pin`). */
+  relayPin?: string;
   level: PermissionLevel;
   pairedAt: string;
   lastSeenAt?: string;

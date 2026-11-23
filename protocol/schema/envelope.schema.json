@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/envelope.schema.json",
+  "title": "RelayEnvelope",
+  "description": "Plaintext relay framing envelope. The relay can route it but cannot read E2E payloads.",
+  "oneOf": [
+    { "$ref": "#/$defs/helloEnvelope" },
+    { "$ref": "#/$defs/routeEnvelope" },
+    { "$ref": "#/$defs/pingEnvelope" },
+    { "$ref": "#/$defs/pongEnvelope" },
+    { "$ref": "#/$defs/errorEnvelope" },
+    { "$ref": "#/$defs/relayMovedEnvelope" }
+  ],
+  "$defs": {
+    "peerId": {
+      "type": "string",
+      "pattern": "^[a-z2-7]{26}$",
+      "description": "base32(first 16 bytes of SHA-256(public key)), lowercase, no padding."
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "base64url": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "base64": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+    },
+    "helloEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "from", "pub", "sig", "role"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "hello" },
+        "from": { "$ref": "#/$defs/peerId" },
+        "pub": { "$ref": "#/$defs/base64" },
+        "sig": { "$ref": "#/$defs/base64" },
+        "role": { "enum": ["device", "bot"] },
+        "id": { "$ref": "#/$defs/uuid" }
+      }
+    },
+    "routeEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "from", "to", "id", "payload"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "route" },
+        "from": { "$ref": "#/$defs/peerId" },
+        "to": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "payload": { "$ref": "#/$defs/base64url" }
+      }
+    },
+    "pingEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "from", "id"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "ping" },
+        "from": { "$ref": "#/$defs/peerId" },
+        "to": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "payload": { "$ref": "#/$defs/base64url" }
+      }
+    },
+    "pongEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "from", "id"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "pong" },
+        "from": { "$ref": "#/$defs/peerId" },
+        "to": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "payload": { "$ref": "#/$defs/base64url" }
+      }
+    },
+    "errorEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "error"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "error" },
+        "from": { "$ref": "#/$defs/peerId" },
+        "to": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    },
+    "relayMovedEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "new_url", "expires"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "relay_moved" },
+        "from": { "$ref": "#/$defs/peerId" },
+        "to": { "$ref": "#/$defs/peerId" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "new_url": { "type": "string", "minLength": 1 },
+        "token": { "type": "string" },
+        "expires": { "type": "integer" }
+      }
+    }
+  }
+}

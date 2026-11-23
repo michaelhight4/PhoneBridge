@@ -1,4 +1,7 @@
-plugins { kotlin("jvm") }
+plugins {
+    kotlin("jvm")
+    kotlin("plugin.serialization")
+}
 
 repositories { mavenCentral() }
 
@@ -9,6 +12,12 @@ java { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaV
 tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
 
 dependencies {
+    // Wire format for every protocol message.
+    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    // Pure-JVM primitives that also exist on Android API 26+ (X25519, ChaCha20-Poly1305, SHA-256, HMAC).
+    api("org.bouncycastle:bcprov-jdk18on:1.87")
+
     testImplementation(kotlin("test"))
 }
+
 tasks.test { useJUnitPlatform() }

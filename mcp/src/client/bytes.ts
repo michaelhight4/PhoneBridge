@@ -1,19 +1,36 @@
-/** Base64 / base64url helpers. All encoding is unpadded base64url unless stated otherwise. */
+/** Base64 / base64url helpers. Encoding is unpadded base64url; decoding is liberal. */
+import { PhoneBridgeError } from "./errors.js";
 
 export function toBase64Url(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
-export function fromBase64Url(text: string): Uint8Array {
-  return new Uint8Array(Buffer.from(text, "base64url"));
-}
-
+/** Standard base64 (with padding), used by MCP image content and file writes. */
 export function toBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
 
-export function fromBase64(text: string): Uint8Array {
-  return new Uint8Array(Buffer.from(text, "base64"));
+/**
+ * Decodes base64url, standard base64, padded or unpadded values and values with whitespace.
+ * docs/PROTOCOL.md requires decoders to accept `+`/`/`, padding and whitespace from other tools.
+ */
+export function fromBase64Loose(text: string): Uint8Array {
+  const cleaned = text
+    .replace(/\s+/g, "")
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .replace(/=+$/, "");
+  if (/[^A-Za-z0-9+/]/.test(cleaned)) {
+    throw new PhoneBridgeError("bad_input", "value is not valid base64");
+  }
+  return new Uint8Array(Buffer.from(cleaned, "base64"));
+}
+
+export const fromBase64Url = fromBase64Loose;
+
+/** Re-encodes any accepted base64 form as standard base64, for image content or files. */
+export function toBase64Std(text: string): string {
+  return toBase64(fromBase64Loose(text));
 }
 
 export function utf8(text: string): Uint8Array {

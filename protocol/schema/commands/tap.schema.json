@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/commands/tap.schema.json",
+  "title": "tap command",
+  "description": "Args and result for tap (level: Control).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "args",
+    "result"
+  ],
+  "properties": {
+    "args": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_id"
+          ],
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "maxProperties": 0
+    }
+  },
+  "$defs": {}
+}

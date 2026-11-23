@@ -1,7 +1,6 @@
-# Handshake test vectors (v1)
+# Protocol test vectors (v1)
 
-`handshake-v1.json` is the byte-exact contract between this TypeScript client and the Kotlin `:core`
-module (task 01). If a feature works here but not in Kotlin, this file says which side is wrong.
+`handshake-v1.json` is the byte-exact contract between this TypeScript client and `core/` (task 01).
 
 ## How it was produced
 
@@ -15,39 +14,40 @@ npm run build
 npm run vectors
 ```
 
-Commit the regenerated JSON together with the script whenever the protocol changes, and note it in
-`HANDOFF.md` so the `:core` lane can update.
+Commit the regenerated JSON with the script after any protocol change, and note it in `HANDOFF.md` so
+the `core/` lane can update its reference tests.
 
 ## What to check in Kotlin
 
-1. **Identities** — `peer_id` = Crockford base32 (lowercase, no padding) of the first 16 bytes of
-   `SHA-256(publicKey)`; `fingerprint` = first 8 symbols uppercased as `ABCD-EFGH`.
-2. **Handshake messages** — `hs1`/`hs2` must serialise to exactly the JSON objects in the file
-   (base64url, no padding, fields in any order but the same values).
-3. **Key schedule** — compute `dh1..dh4`, the transcript hash, `ikm`, `okm` and the two direction keys
-   and compare with hex. `okm = BLAKE2b-512(key = th, data = dh1||dh2||dh3||dh4)` via libsodium
-   `crypto_generichash`, so Kotlin needs the same libsodium (or a BLAKE2b implementation).
-4. **AEAD frames** — XChaCha20-Poly1305 IETF, AAD `PhoneBridge/v1/data`, 24-byte nonce = 16 zero bytes
-   followed by a big-endian 64-bit counter. `hs3` is sealed by the bot at counter 0, `hs4` by the
-   device at counter 0, application data continues at counter 1.
-5. **Relay hello proof** — `proof = X25519(bot secret, challenge public key)`; the relay checks it with
-   `X25519(challenge secret, bot public key)` and gets the same value.
+1. **Identities** — `peer_id` = lowercase Crockford base32 of `SHA-256(publicKey)[0..16)`; the file
+   includes the documented example (`publicKey = 00 01 … 1f → cc6wtab6rgspd48jah4bqcjv9w`).
+2. **Short codes** — five data symbols plus a CRC-5 check symbol (poly `0x05`, init `0x1F`, MSB first):
+   `7K4Q9 → 7K4-Q9B`, `ZZZZZ → ZZZ-ZZQ`, `00000 → 000-00T`.
+3. **Relay hello proof** — `sig = HMAC-SHA256(X25519(peer_private, relay_pub), context)` with
+   `context = "phonebridge/hello/v1|<relay_id>|<b64url(relay_pub)>|<peer_id>|<b64url(nonce)>"`.
+4. **Pairing crypto** — `HKDF-SHA256(secret, salt "PhoneBridge/1/pairing", info "pair-frame")`, then
+   ChaCha20-Poly1305 with `sealed = nonce(12) || ciphertext || tag(16)`; the AAD strings are
+   `"PhoneBridge/1/pair|request|"` and `"PhoneBridge/1/pair|result|"` followed by `device_pub`.
+5. **Noise XX** — `Noise_XX_25519_ChaChaPoly_SHA256`, prologue `PhoneBridge/1/noise-xx`, frames tagged
+   `0x01` (handshake) and `0x02` (transport). The file pins the three handshake frames (33, 97 and 65
+   bytes including the tag), the handshake hash, the peer static keys and the first transport frames in
+   both directions.
+6. **Transport nonce** — 64-bit counter little-endian plus four zero bytes; empty AAD.
+7. **Chunks** — deterministic slices with the whole-payload SHA-256 repeated on each chunk.
 
 ## Vector map
 
 | Field | Meaning |
 | --- | --- |
 | `identities.bot` / `identities.device` | Long-term X25519 key pairs, `peerId`, `fingerprint` |
-| `ephemeral.bot` / `ephemeral.device` | Handshake ephemeral key pairs and the 32-byte nonces |
-| `pairing.secret`, `pairing.code`, `pairing.offer` | One-time pairing inputs and the offer JSON |
-| `handshake.hs1`, `handshake.hs2` | The exact plaintext handshake messages |
-| `handshake.dh.dh1..dh4` | X25519 outputs in bot-centric order |
-| `handshake.transcriptHash`, `ikm`, `okm` | KDF intermediates |
-| `handshake.keys.botToDevice` / `deviceToBot` | Per-direction AEAD keys |
-| `handshake.hs3`, `handshake.hs4` | Finish messages: plaintext JSON, nonce, ciphertext |
-| `frames.tapRequest` | A `tap` request sealed at counter 1 |
-| `frames.direct` | One AEAD call with an explicit key/nonce/AAD |
-| `relay.challenge`, `relay.proof` | One-pass DH hello proof (both sides) |
+| `peerIdExample` | The `00..1f` public key → `cc6wtab6rgspd48jah4bqcjv9w` example |
+| `shortCode` | CRC-5 examples and the vector's pairing code |
+| `relayChallenge` | Relay ephemeral key, nonce, context string and HMAC proof |
+| `pairing` | Derived key, fixed nonce, sealed request and sealed result |
+| `noise` | Ephemeral keys, `hs1`/`hs2`/`hs3` (base64url and hex), handshake hash, pinned peer keys |
+| `transport` | First request and event frames, both directions, plus nonce 0/1 |
+| `chunks` | Deterministic chunk set with payload hash |
+| `kdf` | RFC 5869 HKDF-SHA256 case 1 and an HMAC-SHA256 example |
 
-All binary values are lowercase hex except the handshake JSON strings, which are base64url exactly as
-they go over the wire.
+All binary values are lowercase hex except the frame fields that are base64url exactly as they travel in
+a relay `route.payload`.

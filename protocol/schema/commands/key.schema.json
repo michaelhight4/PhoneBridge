@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/commands/key.schema.json",
+  "title": "key command",
+  "description": "Args and result for key (level: Control).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "args",
+    "result"
+  ],
+  "properties": {
+    "args": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "enum": [
+            "back",
+            "home",
+            "recents",
+            "notifications",
+            "quick_settings",
+            "lock",
+            "enter",
+            "power_dialog"
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "maxProperties": 0
+    }
+  },
+  "$defs": {}
+}

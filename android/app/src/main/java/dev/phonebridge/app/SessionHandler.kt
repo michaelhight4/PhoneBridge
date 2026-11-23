@@ -10,7 +10,7 @@ import dev.phonebridge.core.model.RelayEnvelope
 import dev.phonebridge.core.model.RelayType
 import dev.phonebridge.core.pairing.BotRecord
 import dev.phonebridge.core.pairing.BotRegistry
-import dev.phonebridge.core.pairing.PairingException
+import dev.phonebridge.core.PairingException
 import dev.phonebridge.core.pairing.PairingManager
 import dev.phonebridge.core.pairing.PendingApproval
 import dev.phonebridge.executor.BotSession

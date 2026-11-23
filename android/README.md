@@ -42,8 +42,7 @@ included.
 - serves `relay_move` (`{to:"this"}` or a `wss://` URL) from the Full-level command handler.
 
 The relay module keeps its own envelope and key-pair types, so these are converted once at the
-service boundary. The peer-id alphabet was aligned with `:core` (RFC 4648, per `docs/PROTOCOL.md`);
-the relay short codes keep Crockford.
+service boundary. Its `peer_id`/fingerprint encoding is asserted against `:core` in `:relay:test`.
 
 ## Device control (this build)
 

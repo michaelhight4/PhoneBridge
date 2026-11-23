@@ -21,8 +21,8 @@ class Base32Test {
         val pair = PeerKeyPair.generate()
         assertEquals(26, pair.peerId.length)
         assertEquals(pair.peerId.lowercase(), pair.peerId)
-        // docs/PROTOCOL.md: peer_id uses the RFC 4648 alphabet, not the Crockford short-code one.
-        assertTrue(pair.peerId.all { it in "abcdefghijklmnopqrstuvwxyz234567" })
+        // Crockford alphabet: no I, L, O or U.
+        assertTrue(pair.peerId.all { it in "0123456789abcdefghjkmnpqrstvwxyz" })
     }
 
     @Test
@@ -46,7 +46,7 @@ class Base32Test {
         val fingerprint = pair.fingerprint
         assertEquals(9, fingerprint.length)
         assertEquals('-', fingerprint[4])
-        assertTrue(fingerprint.replace("-", "").all { it in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" })
+        assertTrue(fingerprint.replace("-", "").all { it in "0123456789ABCDEFGHJKMNPQRSTVWXYZ" })
     }
 
     @Test

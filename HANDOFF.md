@@ -12,11 +12,9 @@ branch `pb/android-service-pairing-ui`.
   but this task needs both. Both branches were green (104 core tests, 43 relay tests), so they were
   merged into this branch and are merged to `main` together with this task. Their own merge steps are
   now no-ops.
-- **Relay peer_id fix:** the relay lane encoded `peer_id` with Crockford base32, while `:core` and
-  `docs/PROTOCOL.md` use RFC 4648 (`a-z2-7`, 26 chars). That would have made a bot route to a
-  `device_id` the relay never sees. `relay/.../crypto/Base32.kt` now has `encodeRfc4648`, `PeerId.of`
-  uses it, and a relay test asserts the relay and core peer ids/fingerprints match byte for byte.
-  Crockford is still used for the six-symbol pairing short code.
+- **Relay/core peer_id check:** core and the relay both use lowercase Crockford base32 for `peer_id`
+  (`docs/PROTOCOL.md`), and a new relay test asserts the relay's `PeerId`/fingerprint match
+  `:core` `PeerIds` byte for byte for random keys. Short codes stay Crockford too.
 - Additive executor changes: `ControlArbiter.kickAll()`, `CommandExecutor.full` is now a `var`, and
   `BridgeRuntime.setFullHandler()` so the service can plug in `relay_move` after app start. Existing
   executor tests stay green.

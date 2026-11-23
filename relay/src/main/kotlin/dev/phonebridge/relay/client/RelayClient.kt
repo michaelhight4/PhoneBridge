@@ -1,17 +1,19 @@
 package dev.phonebridge.relay.client
 
-import com.google.gson.JsonObject
+import dev.phonebridge.core.CryptoException
+import dev.phonebridge.core.ProtocolException
+import dev.phonebridge.core.crypto.HelloAuth
+import dev.phonebridge.core.identity.Identity
+import dev.phonebridge.core.model.EnvelopeCodec
+import dev.phonebridge.core.model.RelayEnvelope
+import dev.phonebridge.core.model.RelayType
+import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.relay.RelayConfig
-import dev.phonebridge.relay.crypto.Codec
-import dev.phonebridge.relay.crypto.HelloProof
-import dev.phonebridge.relay.crypto.PeerKeyPair
 import dev.phonebridge.relay.crypto.Tls
-import dev.phonebridge.relay.envelope.GsonRelayEnvelopeCodec
-import dev.phonebridge.relay.envelope.RelayEnvelope
-import dev.phonebridge.relay.json.Json
 import dev.phonebridge.relay.ws.WebSocketClient
 import dev.phonebridge.relay.ws.WebSocketConnection
 import dev.phonebridge.relay.ws.WebSocketException
+import kotlinx.serialization.json.JsonObject
 import java.io.IOException
 import java.net.URI
 import java.util.concurrent.CountDownLatch
@@ -40,8 +42,8 @@ data class RelayMovedEvent(val newUrl: String, val expiresEpochSeconds: Long, va
 
 class RelayClientConfig(
     val url: String,
-    val identity: PeerKeyPair,
-    val role: String = "bot",
+    /** Long-term identity of this device or bot; its role is sent in `hello`. */
+    val identity: Identity,
     /** base64url SHA-256 certificate fingerprint; required to reach a self-signed relay over wss. */
     val tlsPin: String? = null,
     /** Development only: accept any TLS certificate. */
@@ -77,14 +79,16 @@ class RelayClientConfig(
  * It connects, authenticates with `hello` (proving key ownership against the relay challenge), keeps
  * the connection alive, reconnects with exponential backoff and follows `relay_moved` automatically:
  * the new one-time token is used for exactly one `hello`.
+ *
+ * Envelopes are the shared `:core` types; `payload` stays the opaque base64url end-to-end frame.
  */
 class RelayClient(private val config: RelayClientConfig) {
     val peerId: String = config.identity.peerId
-    private val publicKeyB64 = Codec.b64url(config.identity.publicKey)
+    private val publicKeyB64 = config.identity.publicKeyBase64
 
     private val lock = Any()
     private val connectedLatch = CountDownLatch(1)
-    private val outbox = ArrayDeque<JsonObject>()
+    private val outbox = ArrayDeque<RelayEnvelope>()
 
     @Volatile
     private var connection: WebSocketConnection? = null
@@ -113,11 +117,11 @@ class RelayClient(private val config: RelayClientConfig) {
         private set
 
     var onRoute: ((RelayEnvelope) -> Unit)? = null
-    var onPairOffer: ((JsonObject) -> Unit)? = null
+    var onPairOffer: ((RelayEnvelope) -> Unit)? = null
     var onRelayMoved: ((RelayMovedEvent) -> Unit)? = null
     var onError: ((RelayClientError) -> Unit)? = null
     var onStateChanged: ((RelayClientState, String?) -> Unit)? = null
-    var onMessage: ((JsonObject) -> Unit)? = null
+    var onMessage: ((RelayEnvelope) -> Unit)? = null
 
     val isConnected: Boolean get() = connection?.isOpen == true
 
@@ -150,65 +154,56 @@ class RelayClient(private val config: RelayClientConfig) {
     fun awaitConnected(timeoutMs: Long): Boolean =
         connectedLatch.await(timeoutMs, TimeUnit.MILLISECONDS)
 
-    /** Sends a route envelope to [to]; queues it if the connection is momentarily down. */
+    /** Sends a route envelope to [to], passing the base64url end-to-end frame through unchanged. */
     fun sendRoute(to: String, payload: String, id: String = RelayEnvelope.newId()): String {
-        sendJson(RelayEnvelope.route(peerId, to, payload, id).toJson())
+        sendJson(
+            RelayEnvelope(
+                type = RelayType.ROUTE,
+                from = peerId,
+                to = to,
+                id = id,
+                payload = payload
+            )
+        )
+        return id
+    }
+
+    /** Sends a route envelope to [to] with a raw frame; the frame is base64url encoded for the wire. */
+    fun sendRouteBytes(to: String, payload: ByteArray, id: String = RelayEnvelope.newId()): String {
+        sendJson(RelayEnvelope.route(from = peerId, to = to, payload = payload, id = id))
         return id
     }
 
     fun ping(id: String = RelayEnvelope.newId()) {
-        sendJson(
-            Json.obj(
-                "v" to 1,
-                "type" to "ping",
-                "from" to peerId,
-                "id" to id
-            )
-        )
+        sendJson(RelayEnvelope.ping(from = peerId, id = id))
     }
 
     fun pairStore(code: String, offer: JsonObject) {
-        sendJson(
-            Json.obj(
-                "v" to 1,
-                "type" to "pair_store",
-                "from" to peerId,
-                "code" to code,
-                "offer" to offer
-            )
-        )
+        sendJson(RelayEnvelope.pairStore(from = peerId, code = code, offer = offer))
     }
 
     fun pairLookup(code: String) {
-        sendJson(
-            Json.obj(
-                "v" to 1,
-                "type" to "pair_lookup",
-                "from" to peerId,
-                "code" to code
-            )
-        )
+        sendJson(RelayEnvelope.pairLookup(from = peerId, code = code))
     }
 
-    fun sendRaw(obj: JsonObject): Boolean = sendJson(obj)
+    fun sendRaw(envelope: RelayEnvelope): Boolean = sendJson(envelope)
 
-    private fun sendJson(obj: JsonObject): Boolean {
+    private fun sendJson(envelope: RelayEnvelope): Boolean {
         val current = connection
         if (current != null && current.isOpen) {
             try {
-                current.sendText(obj.toString())
+                current.sendText(EnvelopeCodec.encode(envelope))
                 return true
             } catch (_: Exception) {
-                // Fall through and queue.
+                // Fall through and queue (e.g. the relay went away mid-send).
             }
         }
-        val encoded = obj.toString()
         synchronized(lock) {
             if (outbox.size >= config.outboxLimit) {
                 outbox.removeFirst()
                 config.log("relay client outbox full; dropping the oldest message")
             }
-            outbox.addLast(Json.parseObject(encoded) ?: return false)
+            outbox.addLast(envelope)
         }
         return false
     }
@@ -218,7 +213,7 @@ class RelayClient(private val config: RelayClientConfig) {
             val next = synchronized(lock) { outbox.removeFirstOrNull() } ?: return
             val current = connection ?: return
             try {
-                current.sendText(next.toString())
+                current.sendText(EnvelopeCodec.encode(next))
             } catch (_: Exception) {
                 synchronized(lock) { outbox.addFirst(next) }
                 return
@@ -325,53 +320,62 @@ class RelayClient(private val config: RelayClientConfig) {
             conn.setReadTimeout(config.handshakeTimeoutMs)
             val challengeBytes = conn.readMessage()
                 ?: throw IOException("relay closed the connection before its challenge")
-            val challenge = Json.parseObject(String(challengeBytes, Charsets.UTF_8))
-                ?: throw IOException("relay sent a malformed challenge")
-            if (Json.string(challenge, "type") != "challenge") {
-                throw IOException("expected a challenge, got ${Json.string(challenge, "type")}")
+            val challenge = decode(String(challengeBytes, Charsets.UTF_8), "challenge")
+            if (challenge.type != RelayType.CHALLENGE) {
+                throw IOException("expected a challenge, got ${challenge.type}")
             }
-            val nonceB64 = Json.string(challenge, "nonce") ?: throw IOException("challenge has no nonce")
-            val relayPublicB64 = Json.string(challenge, "relay_pub")
-                ?: throw IOException("challenge has no relay public key")
-            val nonce = Codec.b64urlDecode(nonceB64) ?: throw IOException("challenge nonce is not base64url")
-            val relayPublicKey = Codec.b64urlDecode(relayPublicB64)
-                ?: throw IOException("challenge relay key is not base64url")
-            val challengeRelayId = Json.string(challenge, "relay_id") ?: ""
+            val nonceB64 = challenge.nonce ?: throw IOException("challenge has no nonce")
+            val relayPublicB64 = challenge.relayPub ?: throw IOException("challenge has no relay public key")
+            val nonce = try {
+                B64Url.decode(nonceB64)
+            } catch (_: IllegalArgumentException) {
+                throw IOException("challenge nonce is not base64url")
+            }
+            val relayPublicKey = try {
+                B64Url.decode(relayPublicB64)
+            } catch (_: IllegalArgumentException) {
+                throw IOException("challenge relay key is not base64url")
+            }
+            val challengeRelayId = challenge.relayId ?: ""
 
-            val proof = HelloProof.compute(
-                peerPrivateKey = config.identity.privateKey,
-                relayPublicKey = relayPublicKey,
-                relayId = challengeRelayId,
-                peerId = peerId,
-                nonce = nonce
+            val proof = try {
+                HelloAuth.proof(
+                    peerPrivateKey = config.identity.privateKey,
+                    peerPublicKey = config.identity.publicKey,
+                    relayPublicKey = relayPublicKey,
+                    relayId = challengeRelayId,
+                    peerId = peerId,
+                    nonce = nonce
+                )
+            } catch (e: CryptoException) {
+                throw IOException("relay challenge key is unusable: ${e.message}")
+            }
+
+            val hello = RelayEnvelope.hello(
+                from = peerId,
+                publicKeyB64 = publicKeyB64,
+                role = config.identity.role,
+                proofB64 = B64Url.encode(proof),
+                nonceB64 = nonceB64,
+                moveToken = moveToken
             )
-            val hello = Json.obj(
-                "v" to 1,
-                "type" to "hello",
-                "from" to peerId,
-                "pub" to publicKeyB64,
-                "sig" to Codec.b64url(proof),
-                "nonce" to nonceB64,
-                "role" to config.role
-            )
-            moveToken?.let { hello.addProperty("move_token", it) }
-            conn.sendText(hello.toString())
+            conn.sendText(EnvelopeCodec.encode(hello))
 
             while (true) {
                 val bytes = conn.readMessage()
                     ?: throw IOException("relay closed the connection during authentication")
-                val obj = Json.parseObject(String(bytes, Charsets.UTF_8)) ?: continue
-                when (Json.string(obj, "type")) {
-                    "hello_ok" -> {
-                        relayId = Json.string(obj, "relay_id")
+                val envelope = decode(String(bytes, Charsets.UTF_8), "authentication reply")
+                when (envelope.type) {
+                    RelayType.HELLO_OK -> {
+                        relayId = envelope.relayId
                         // A move token is single use: never send it again on later reconnects.
                         moveToken = null
                         conn.setReadTimeout(config.idleTimeoutMs)
                         config.log("relay client $peerId connected to $url (relay ${relayId})")
                         return conn
                     }
-                    "error" -> {
-                        val error = parseError(obj)
+                    RelayType.ERROR -> {
+                        val error = parseError(envelope)
                         onError?.invoke(error)
                         moveToken = null
                         throw IOException("relay rejected authentication: ${error.code} ${error.message ?: ""}")
@@ -389,21 +393,20 @@ class RelayClient(private val config: RelayClientConfig) {
         while (running && conn.isOpen) {
             val bytes = conn.readMessage() ?: throw IOException("relay closed the connection")
             val text = String(bytes, Charsets.UTF_8)
-            val obj = Json.parseObject(text) ?: continue
-            when (Json.string(obj, "type")) {
-                "route" -> {
-                    val envelope = GsonRelayEnvelopeCodec.decode(text) ?: continue
+            val envelope = decode(text, "relay message")
+            when (envelope.type) {
+                RelayType.ROUTE -> {
                     onRoute?.invoke(envelope)
-                    onMessage?.invoke(obj)
+                    onMessage?.invoke(envelope)
                 }
-                "relay_moved" -> {
-                    val newUrl = Json.string(obj, "new_url")
+                RelayType.RELAY_MOVED -> {
+                    val newUrl = envelope.newUrl
                     if (newUrl == null) {
                         onError?.invoke(RelayClientError("bad_envelope", "relay_moved without new_url"))
                         continue
                     }
-                    val expires = Json.long(obj, "expires") ?: 0L
-                    val token = Json.string(obj, "token")
+                    val expires = envelope.expires ?: 0L
+                    val token = envelope.token
                     currentUrl = newUrl
                     moveToken = token
                     pendingMove = true
@@ -412,21 +415,25 @@ class RelayClient(private val config: RelayClientConfig) {
                     conn.close(WebSocketConnection.CLOSE_NORMAL, "relay moved")
                     return
                 }
-                "error" -> onError?.invoke(parseError(obj))
-                "pair_offer" -> {
-                    onPairOffer?.invoke(obj)
-                    onMessage?.invoke(obj)
+                RelayType.ERROR -> onError?.invoke(parseError(envelope))
+                RelayType.PAIR_OFFER -> {
+                    onPairOffer?.invoke(envelope)
+                    onMessage?.invoke(envelope)
                 }
-                else -> onMessage?.invoke(obj)
+                else -> onMessage?.invoke(envelope)
             }
         }
     }
 
-    private fun parseError(obj: JsonObject): RelayClientError {
-        val error = Json.objOrNull(obj, "error")
-        val code = error?.let { Json.string(it, "code") } ?: "unknown"
-        val message = error?.let { Json.string(it, "message") }
-        return RelayClientError(code, message, Json.string(obj, "id"))
+    private fun decode(text: String, what: String): RelayEnvelope = try {
+        EnvelopeCodec.decode(text)
+    } catch (e: ProtocolException) {
+        throw IOException("relay sent a malformed $what: ${e.message}")
+    }
+
+    private fun parseError(envelope: RelayEnvelope): RelayClientError {
+        val error = envelope.error
+        return RelayClientError(error?.code ?: "unknown", error?.message, envelope.id)
     }
 
     private fun updateState(next: RelayClientState, detail: String?) {

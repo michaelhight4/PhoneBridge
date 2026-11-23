@@ -5,8 +5,7 @@ its licence, so the whole dependency tree stays licence-compatible (MIT/Apache/B
 GPL in PhoneBridge itself).
 
 Policy: reuse free, licence-compatible code (MIT / Apache-2.0 / BSD / CC0) before writing anything
-from scratch, and record it here. GPL/AGPL is not used. PhoneBridge itself is MIT (see
-[../LICENSE](../LICENSE)).
+from scratch, and record it here. GPL/AGPL is not used.
 
 ## Runtime dependencies (`core`)
 
@@ -47,36 +46,18 @@ nothing else to license-track.
 
 ## Relay (`relay/`)
 
-<<<<<<< HEAD
-`relay/` is owned by another lane; its dependencies should be listed there (currently Kotlin stdlib and
-`kotlin("test")` only).
-
-## Test-only dependencies
-
-| Library | Version | Licence |
-| --- | --- | --- |
-| `kotlin-test` / JUnit 5 | bundled with Kotlin 2.3.0 | Apache-2.0 / EPL-2.0 (test scope only) |
-
-## Assets
-
-None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
-source and author before they are committed.
-=======
 | What | Licence | How it is used |
 | --- | --- | --- |
+| `:core` (this repo) | MIT | Envelope/identity model (`RelayEnvelope`, `EnvelopeCodec`, `HelloAuth`, `PeerIds`, `ShortCode`), which brings kotlinx-serialization and Bouncy Castle (above) as its own `api()` dependencies. The relay adds no JSON or crypto library of its own. |
 | Kotlin standard library, `kotlin("test")` + JUnit 5 | Apache-2.0 / EPL-2.0 | Runtime and test-only, as above. |
-| [Google Gson](https://github.com/google/gson) 2.11.0 | Apache-2.0 | JSON encoding/decoding of relay messages. Small (~280 KB), pure Java, works on Android API 26+ and on a plain JVM, and keeps the relay embeddable in the phone app and the desktop app. Only the routing fields of an envelope are parsed; encrypted payloads are never decoded. |
 
 Implemented in the relay from specifications (no third-party code):
 
 | Area | Specification | Where |
 | --- | --- | --- |
 | WebSocket server and client, framing, masking, close codes | RFC 6455 | `relay/src/main/kotlin/dev/phonebridge/relay/ws/` |
-| X25519 scalar multiplication | RFC 7748 (validated against its section 5.2 and 6.1 test vectors) | `relay/.../crypto/X25519.kt` |
-| Self-signed X.509 v1 certificate and PKCS#12 storage | RFC 5280 / PKCS#12 | `relay/.../crypto/Tls.kt` |
-| Crockford base32, check symbols, confusable mapping | Crockford base32 specification | `relay/.../crypto/Base32.kt` |
-| SHA-256 and HMAC-SHA256 | FIPS 180-4 / RFC 2104, via `java.security` / `javax.crypto` | `relay/.../crypto/Codec.kt` |
-| TLS transport | JSSE (`javax.net.ssl`), part of the JDK and Android | `relay/.../crypto/Tls.kt` |
+| Self-signed X.509 v1 certificate (hand-built DER) and PKCS#12 storage | RFC 5280 / PKCS#12 | `relay/.../crypto/Tls.kt` |
+| TLS transport, certificate pinning, host name verification | JSSE (`javax.net.ssl`), part of the JDK and Android | `relay/.../crypto/Tls.kt`, `relay/.../ws/WebSocketClient.kt` |
 
 ### Why the relay's WebSocket layer is not a library
 
@@ -95,12 +76,13 @@ The relay uses only APIs present on Android API 26+ (`java.util.Base64`, `javax.
 `java.security`, `java.util.concurrent`, `java.io`, `java.net`) and on JDK 17+, so the same classes run
 in the Android app, on the desktop and on a VPS. It ships no images, fonts or other binary assets.
 
-## Core (`core/`)
+## Test-only dependencies
 
-Kotlin standard library and `kotlin("test")` only at the time of writing; the protocol, crypto and
-pairing task owns this section.
+| Library | Version | Licence |
+| --- | --- | --- |
+| `kotlin-test` / JUnit 5 | bundled with Kotlin 2.3.0 | Apache-2.0 / EPL-2.0 (test scope only) |
 
-## MCP server (`mcp/`)
+## Assets
 
-Node/TypeScript dependencies are recorded here when that module lands.
->>>>>>> main
+None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
+source and author before they are committed.

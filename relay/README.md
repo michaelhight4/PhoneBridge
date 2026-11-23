@@ -12,9 +12,12 @@ It runs in three places from the same code:
 | Inside the desktop app | same embedding API |
 | A little VPS / a spare machine | `gradlew.bat :relay:run --args="--port 8443"` or the standalone jar |
 
-Zero native dependencies and one small library (Gson) keep it embeddable. The WebSocket transport
-(RFC 6455 server and client), X25519, the self-signed certificate and the pairing code handling are
-part of this module; see [../docs/THIRD_PARTY.md](../docs/THIRD_PARTY.md) for why.
+The relay is built on the shared `:core` library — `RelayEnvelope`/`EnvelopeCodec` for messages,
+`HelloAuth` for the challenge proof, `Identity`/`PeerIds` for identities, `ShortCode` for pairing
+codes — so it adds no protocol code of its own and no extra dependency beyond what `:core` already
+brings (kotlinx-serialization and Bouncy Castle; see [../docs/THIRD_PARTY.md](../docs/THIRD_PARTY.md)).
+The WebSocket transport (RFC 6455 server and client), the TLS material and the self-signed certificate
+are part of this module.
 
 ## Quick start (standalone)
 
@@ -102,14 +105,13 @@ exponential backoff, and follow `relay_moved` to the new host.
 val client = RelayClient(
     RelayClientConfig(
         url = "wss://192.168.1.20:8443",
-        identity = myKeyPair,             // long-term X25519 key
-        role = "bot",
+        identity = myIdentity,            // :core Identity (its role is sent in hello)
         tlsPin = offer.pin,               // the offer's "relay_pin" value: pin the fingerprint
     )
 )
 
 client.onRoute = { envelope -> handlePayload(envelope.payload) }
-client.onPairOffer = { message -> /* short code lookup result */ }
+client.onPairOffer = { envelope -> /* short code lookup result */ }
 client.onRelayMoved = { moved -> /* the client reconnects by itself */ }
 
 client.start()
@@ -148,6 +150,7 @@ token replay and expiry; and TLS with fingerprint pinning (plus the rejection of
 ## Android notes
 
 The module uses only APIs available on API 26+: `java.util.Base64`, `javax.net.ssl`, `java.security`,
-`java.util.concurrent`, `java.io`. It has no Android-specific code, so the same classes are covered by
-the JVM tests. The APK build itself waits for an Android SDK on this machine; the relay part of the app
-is plain Kotlin, so it is testable today.
+`java.util.concurrent`, `java.io`. Crypto and JSON come from `:core` (Bouncy Castle lightweight API and
+kotlinx-serialization, both Android-safe), so the relay needs no Android-specific code and the same
+classes are covered by the JVM tests. The APK build itself waits for an Android SDK on this machine; the
+relay part of the app is plain Kotlin, so it is testable today.

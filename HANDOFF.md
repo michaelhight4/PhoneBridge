@@ -71,6 +71,8 @@ what is left, how to build/test, blockers.
   Verified here: fresh `npm ci && npm run build && npm test` green (57 tests), real stdio and HTTP MCP
   clients list 17 tools, CLI devices/status/help behave, and the real relay interop described above.
 - **Blockers**: none for merging. The remaining risk is only the Android APK side (SDK missing).
+- Merged to `main` (fast-forward) at 12:17 America/Chicago. There is no `origin` remote yet, so nothing
+  was pushed.
 
 ## 2026-11-23 12:15 — ds2 (deepseek/deepseek-flash) — relay: re-merged main, whole suite green
 

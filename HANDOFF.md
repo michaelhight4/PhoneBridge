@@ -3,6 +3,86 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 12:10 PM -0600 — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
+Task: v1 end-to-end integration — JVM fake-phone harness, integration fixes, `docs/QUICKSTART.md`
+(task 06), branch `pb/v1-integration`.
+
+**Done**
+- **New `:e2e` module (`tests/e2e`)**: a fake phone built from the real code — `:core` (protocol,
+  Noise `XX`, pairing, bot registry, control arbiter), `:relay` (server + client, TLS, mailbox, move
+  tokens), `:android:executor-core` (command table, permissions, args, UI-tree ids) and
+  `:android:ui-core` (`SessionHandler`, `ApprovalController`, `BridgeState`, `ActivityLog`). Only
+  `DeviceControl` is faked (`FakePhoneDevice`), plus the Shizuku-backed Full commands.
+- **Acceptance run: `gradlew.bat :e2e:test`** — 8 tests, about a second, green. It pairs a bot by
+  **short code** (over the real pinned TLS relay), by **link** and by **`.pbpair` file**, then runs
+  `status`, `screenshot` (png + jpeg), `ui_tree`, `tap` (coordinates and `node_id`), `swipe`, `type`
+  (including non-ASCII text), `key`, `open_app` (package and label), `notifications`, `bad_args`,
+  `unknown_cmd`, a **View-level permission denial** (nothing reaches the device), a Full command
+  without Shizuku, **control queueing between two bots** (position event, `busy`, `not_controller`,
+  promotion on release, `control_changed`, notification text), **Kick everyone** (sealed `kicked`,
+  paired keys survive, re-handshake works) and **`relay_move` between two relays** (both peers follow,
+  the Noise session keeps working, relay A drains).
+- **`gradlew.bat :e2e:runFakePhone`**: manual target for any external bot (MCP server/CLI, a script).
+  Starts a relay + fake phone, prints relay URL, cert pin, short code, pairing link and `.pbpair` path,
+  auto-approves pairing at Control. Press Enter to stop.
+- **`docs/QUICKSTART.md`**: install the APK, enable accessibility, choose the heart host (PC / phone /
+  VPS), pair a bot, MCP config snippet, JSON API examples, troubleshooting, and the one command that
+  runs the whole suite. `README`, `docs/TESTING.md`, `tests/e2e/README.md` and CI updated.
+
+**Integration bugs fixed (each one has a test)**
+1. **The relay certificate pin never reached the bot.** `relay/PROTOCOL-RELAY.md` documents an optional
+   `relay_pin` in the pairing offer, but `core`'s `PairingOffer` silently dropped it, so a bot could
+   never reach a self-signed relay (the default when the heart runs on a PC or the phone). Added an
+   optional `relay_pin` (model + `PairingManager.createOffer` + validation + `docs/PROTOCOL.md` 5.1),
+   and the app now puts the embedded relay's pin in the offer (`BridgeController.createOffer`).
+2. **Executor argument defaults contradicted the protocol.** `ui_tree` defaulted `visible_only` to
+   false (PROTOCOL 6.1: true) and accepted `max_depth` 0 (1..1000); `screenshot.max_width` accepted
+   1..100000 (16..16384). Aligned, executor tests updated.
+3. **Queued bots were told `not_controller`.** PROTOCOL 7 and SPEC 4 say a queued bot gets `busy` with
+   its position. The executor now answers `busy` ("queued at position n") when the bot is waiting and
+   `not_controller` only when it never asked. Tests in both `:android:executor-core` and `:e2e`.
+4. **The published JSON Schemas could not validate real messages.** The peer-id pattern `[a-z2-7]`
+   rejected every real Crockford id; padded-base64 patterns rejected base64url; the envelope schema
+   knew 6 of 12 envelope types and omitted `hello.nonce`/`move_token`; `pair_request`/`pair_result`
+   lacked `v`/`bot_id`/`device_id`; `status` typed `device`/`battery`/`shizuku` as objects and queue
+   entries as objects; `screenshot` required `data_b64` (the chunked form was rejected). All fixed;
+   the envelope schema now covers `challenge`, `hello`, `hello_ok`, `route`, `ping`, `pong`, `error`,
+   `relay_moved`, `pair_store`, `pair_stored`, `pair_lookup`, `pair_offer` and `$ref`s the offer.
+   `:e2e:test` now writes **real** messages to `build/protocol-samples`, so `tests/conformance`
+   validates genuine output (193 tests, 7 real samples) — run the two commands in that order.
+5. **The JSON stores were not Android 8 safe and could fail on Windows.** `JsonFileBotRegistry`,
+   `JsonFileActivityLog` and `RelaySettingsStore` used Java-11 `Files.readString`/`writeString`
+   (Android 13+) although minSdk is 26, and the temp-file rename could throw `AccessDeniedException`
+   on Windows (seen once as a flaky `:core:test`). They now use byte IO and a shared
+   `core.util.AtomicFiles.replace` that retries briefly and falls back to a non-atomic move.
+
+**Left / next**
+- **MCP server/CLI (task 05) is not on `main`, so that acceptance leg is blocked.** The branch
+  `pb/mcp-server-cli` is based on the initial scaffold and implements its own handshake (X25519
+  `hs1`..`hs4` + BLAKE2b-512 key schedule, and a one-pass DH relay proof) instead of the merged
+  Noise `XX` + `DH-HMAC-SHA256` hello, so it cannot pair with `:core` today. It needs a rebase onto
+  `:core` (rewrite `mcp/src/client/handshake.ts` + `crypto.ts`, reuse its own `relay.ts` framing).
+  The harness side is ready: point it at `:e2e:runFakePhone`, or add a Node test that reuses the same
+  relay + fake phone. `docs/API.md` only exists on that branch; QUICKSTART marks the MCP snippet
+  "not in `main` yet".
+- APK build still pending an Android SDK (not installed here on purpose).
+- Chunked screenshots (over 8 MiB) are not exercised end to end; MediaProjection, the
+  NotificationListener and Shizuku remain faked in the harness; `tests/mock-device` still speaks
+  plaintext dev payloads.
+
+**How to test**
+```
+gradlew.bat :e2e:test            # the v1 acceptance run (about 1 s, no SDK, no phone)
+gradlew.bat :core:test :relay:test :android:executor-core:test :android:ui-core:test :e2e:test
+gradlew.bat :e2e:runFakePhone    # relay + fake phone for manual/external bots
+cd tests\conformance; npm ci; npm test   # after :e2e:test, also validates the real samples
+```
+
+**Blockers**
+- No `origin` remote, so nothing was pushed (commits only).
+- Task 05 (MCP) as described above.
+- Android SDK/licences for the APK.
+
 ## 2026-11-23 11:45 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
 Task: Android foreground service, pairing UI, bot list, permissions and notifications (`android/`),
 branch `pb/android-service-pairing-ui`.

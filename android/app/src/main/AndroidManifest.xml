@@ -97,6 +97,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Runs the user's own PhoneBridge relay for their own paired devices." />
         </service>
+
+        <!-- Read-only access to the .pbpair export in the share sheet; nothing else is shared. -->
+        <provider
+            android:name=".PairingFileProvider"
+            android:authorities="dev.phonebridge.app.pairing"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 
 </manifest>

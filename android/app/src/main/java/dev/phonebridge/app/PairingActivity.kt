@@ -13,7 +13,8 @@ import dev.phonebridge.ui.PairingController
 
 /**
  * Shows one live pairing offer: QR code (the `phonebridge://pair?...` link, ZXing), the short code,
- * Share link, Export `.pbpair`, Regenerate, and the countdown to the ten-minute expiry.
+ * Share link, Export `.pbpair` (system share sheet), Regenerate, and the countdown to the ten-minute
+ * expiry.
  *
  * The offer itself lives in the foreground service, so rotating the screen does not burn the code and
  * closing the screen does not silently mint another one.
@@ -22,7 +23,6 @@ class PairingActivity : Activity() {
 
     private var controller: PairingController? = null
     private var current: PairingController.View? = null
-    private var exportContents: String? = null
 
     private lateinit var qr: ImageView
     private lateinit var code: TextView
@@ -67,7 +67,7 @@ class PairingActivity : Activity() {
         render(current)
 
         shareLink.setOnClickListener { shareLink() }
-        exportFile.setOnClickListener { requestExport() }
+        exportFile.setOnClickListener { sharePairingFile() }
         findViewById<Button>(R.id.pairing_regenerate).setOnClickListener {
             current = runCatching { controller?.regenerate() }.getOrNull()
             if (current == null) {
@@ -117,36 +117,25 @@ class PairingActivity : Activity() {
         startActivity(Intent.createChooser(send, getString(R.string.pairing_share_link)))
     }
 
-    private fun requestExport() {
+    /** Puts the .pbpair file in the system share sheet (chat, email, Drive, Files, ...). */
+    private fun sharePairingFile() {
         val view = current ?: return
         if (view.expired) return
-        exportContents = view.fileContents
-        val create = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/json"
-            putExtra(Intent.EXTRA_TITLE, getString(R.string.pairing_export_name, view.offer.code))
-        }
-        @Suppress("DEPRECATION")
-        startActivityForResult(create, REQUEST_EXPORT)
-    }
-
-    @Deprecated("Platform activity-result API; AndroidX Activity Result is not a dependency here.")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQUEST_EXPORT || resultCode != RESULT_OK) return
-        val uri = data?.data ?: return
-        val contents = exportContents ?: return
         try {
-            contentResolver.openOutputStream(uri)?.use { stream ->
-                stream.write(contents.toByteArray(Charsets.UTF_8))
+            val directory = PairingFileProvider.directory(this)
+            val file = java.io.File(directory, getString(R.string.pairing_export_name, view.offer.code))
+            file.writeText(view.fileContents)
+            val uri = PairingFileProvider.uriFor(file.name)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_SUBJECT, getString(R.string.pairing_share_title))
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = android.content.ClipData.newRawUri("pairing file", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            Toast.makeText(this, R.string.pairing_export_done, Toast.LENGTH_SHORT).show()
+            startActivity(Intent.createChooser(send, getString(R.string.pairing_export_file)))
         } catch (e: Exception) {
-            Toast.makeText(this, e.message ?: "Could not write the file", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, e.message ?: "Could not prepare the file", Toast.LENGTH_LONG).show()
         }
-    }
-
-    private companion object {
-        const val REQUEST_EXPORT = 41
     }
 }

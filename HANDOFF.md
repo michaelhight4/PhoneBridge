@@ -3,6 +3,96 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-23 11:45 AM — ds3 — deepseek/deepseek-flash (DeepSeek V4.1 Flash)
+Task: Android foreground service, pairing UI, bot list, permissions and notifications (`android/`),
+branch `pb/android-service-pairing-ui`.
+
+**Integration note (important for the other lanes)**
+- `main` did not contain tasks 01 (`pb/protocol-pairing`) or 02 (`pb/relay`) when this task started,
+  but this task needs both. Both branches were green (104 core tests, 43 relay tests), so they were
+  merged into this branch and are merged to `main` together with this task. Their own merge steps are
+  now no-ops.
+- **Relay peer_id fix:** the relay lane encoded `peer_id` with Crockford base32, while `:core` and
+  `docs/PROTOCOL.md` use RFC 4648 (`a-z2-7`, 26 chars). That would have made a bot route to a
+  `device_id` the relay never sees. `relay/.../crypto/Base32.kt` now has `encodeRfc4648`, `PeerId.of`
+  uses it, and a relay test asserts the relay and core peer ids/fingerprints match byte for byte.
+  Crockford is still used for the six-symbol pairing short code.
+- Additive executor changes: `ControlArbiter.kickAll()`, `CommandExecutor.full` is now a `var`, and
+  `BridgeRuntime.setFullHandler()` so the service can plug in `relay_move` after app start. Existing
+  executor tests stay green.
+
+**Done**
+- **`android/ui-core`** — new plain Kotlin/JVM module (always in the build, no `android.*`), 39 JVM
+  tests:
+  - `PairingController`: one live offer, QR/link/file payloads, 10-minute countdown (rounded up),
+    expiry, regenerate burns the old secret, cancel.
+  - `ApprovalController`: wraps `:core` `PairingManager`; name/fingerprint/requested level, level
+    picker can only lower, Allow stores the bot and sends the sealed `pair_result`, Deny leaves it
+    unpaired, an expired offer refuses approval. Tested through the real bot-side `PairingClient`.
+  - `BotListController`: rows (name, fingerprint, last seen, connected/in control/queue), on/off
+    switch closes a session, level change, unpair one bot without touching the others.
+  - `BridgeState`: live sessions + control mirror, per-command activity log, notification text
+    (`Alpha is in control` / `No bot in control` / `· N waiting`), control-change callbacks, idle
+    timeout, and `kickEveryone()` (clears holder + queue, closes sessions, logs per bot).
+  - `ActivityLog`: in-memory and atomic `activity.v1.json` stores, newest-first, per-bot filter, cap.
+  - `RelayController` + `RelaySettingsStore`: this phone / my PC / custom URL, URL rules (plain
+    `ws://` only on loopback), certificate pin, Move heart here, `relay_move` hand-over.
+  - `Onboarding`: accessibility / notifications / battery checklist model.
+  - `ExecutorProtocol`: `:core` `AppRequest`/`AppResponse` ↔ executor `Request`/`Response`, and a
+    log detail that never copies typed text, shell commands or file contents.
+- **`android/app`**:
+  - `BridgeService` (foreground, `connectedDevice|specialUse`, manifest permissions):
+    `BridgeController` loads the device identity (`identity.v1.json`), `JsonFileBotRegistry`
+    (`bots.v1.json`), activity log, `PairingManager`; starts the embedded relay (`:relay`
+    `Relay.start`, port 0, self-signed TLS, pin exposed) when this phone is the heart; keeps the
+    outbound `:relay` `RelayClient` (Wi-Fi or mobile data, backoff, follows `relay_moved`).
+  - `SessionHandler`: Noise `XX` responder per paired bot with the paired public key pinned,
+    decrypts `AppRequest` → `BridgeRuntime.handle` → sealed `AppResponse`, `queue_position` event,
+    `control_changed` broadcast, sealed `kicked` on disable/unpair/kick. Pairing requests from an
+    unknown peer are decrypted against live offers and become a pending approval. `relay_move`
+    (`to:"this"` or a `wss://` URL) is implemented as the Full-level handler.
+  - `BridgeNotifications`: low-importance ongoing notification naming the controller (`No bot in
+    control` when nobody is) with **Stop** and **Kick everyone**; high-importance full-screen
+    `ApprovalActivity` notification for "Allow this bot?".
+  - Screens: pairing (ZXing core QR, short code, Share link, share-sheet `.pbpair` via a small
+    read-only `PairingFileProvider`, countdown, regenerate), approval (lock-screen full-screen,
+    name/fingerprint/requested level, lowering picker, Allow/Deny), Bluetooth-style bot list (switch,
+    level, unpair, kick everyone), per-bot activity log (filter, clear), relay screen, onboarding
+    checklist, extended main screen (start/stop bridge, controller text, doors to every screen).
+  - `AppStores` for the JSON files and identity generation; `LocalAddress` for the embedded relay's
+    advertised LAN address; `QrCodes` (ZXing core 3.5.3, Apache-2.0).
+- `docs/THIRD_PARTY.md` updated with ZXing and the Gson reuse; `android/README.md` documents the
+  screens, service and new module.
+
+**How to test**
+```
+gradlew.bat :android:ui-core:test         # 39 view-model/state tests (acceptance)
+gradlew.bat :android:executor-core:test   # 75 executor tests, incl. kickAll
+gradlew.bat :core:test                    # 104 core tests
+gradlew.bat :relay:test                   # 44 relay tests, incl. peer-id compatibility
+```
+The app module is not included without an SDK, so `assembleDebug` was not run.
+
+**Left / next**
+- **APK build is pending an Android SDK + accepted licences** on this PC (not installed on purpose).
+  Expect the usual first-build fixes: AGP 9 DSL details, lint NewApi (guarded calls are already
+  version-checked), D8 duplicates from Bouncy Castle, and any resource/ID typo. A Kotlin compiler
+  syntax pass over `android/app` found no syntax errors; every remaining unresolved reference was
+  an `android.*`/ZXing symbol that only the SDK provides.
+- The embedded relay advertises the phone's LAN IPv4 address, which works on the same Wi-Fi but is
+  not reachable across NAT/ mobile data. For remote use, pick "My PC" or a custom `wss://` relay;
+  NAT traversal / a tiny VPS relay is a later task.
+- MediaProjection screenshots below API 30, the NotificationListenerService, and Shizuku (Full:
+  `install_apk`, `shell`, `files`, `settings`) remain earlier-task gaps; `relay_move` is now wired.
+- `E2ESession` handling is in `SessionHandler` (app module) and was reviewed but not JVM-tested
+  end-to-end; a future task could move it behind a plain-Kotlin seam and add a fake relay test.
+- Pairing file export uses the system share sheet through `PairingFileProvider`; there is no
+  "save to Files" button beyond what the share sheet offers.
+
+**Blockers**
+- Android SDK (and licence acceptance) to build the APK — user decision, not installed by this bot.
+- No `origin` remote exists yet, so all commits are local only.
+
 ## 2026-11-23 11:14â€“12:00 â€” ds2 / deepseek/deepseek-flash â€” task 02 relay server (`:relay`)
 
 **Done (acceptance criteria met, `:relay:test` green: 43 tests)**

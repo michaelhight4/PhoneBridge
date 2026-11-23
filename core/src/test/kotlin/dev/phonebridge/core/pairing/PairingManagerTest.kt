@@ -224,4 +224,27 @@ class PairingManagerTest {
         val failure = assertFailsWith<PairingException> { manager.approve(pending) }
         assertEquals(PairingFailure.BAD_REQUEST, failure.reason)
     }
+
+    @Test
+    fun aPendingApprovalSurvivesANewOffer() {
+        val first = newOffer()
+        val pending = manager.accept(first.code, PairingClient.createRequest(first, bot).sealed)
+        // The user shows a second QR code while the first "Allow this bot?" prompt is still open.
+        val second = newOffer()
+        assertEquals(1, manager.pendingApprovals().size)
+        assertEquals(second.code, manager.liveOffers().single().code)
+        manager.approve(pending)
+        assertEquals(bot.peerId, registry.list().single().botId)
+    }
+
+    @Test
+    fun unansweredPromptsExpireAfterTenMinutes() {
+        val offer = newOffer()
+        val pending = manager.accept(offer.code, PairingClient.createRequest(offer, bot).sealed)
+        clock.advance(600_001)
+        assertTrue(manager.pendingApprovals().isEmpty())
+        val failure = assertFailsWith<PairingException> { manager.approve(pending) }
+        assertEquals(PairingFailure.BAD_REQUEST, failure.reason)
+        assertTrue(registry.list().isEmpty())
+    }
 }

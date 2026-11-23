@@ -3,7 +3,12 @@ package dev.phonebridge.core.crypto
 import dev.phonebridge.core.CryptoException
 import dev.phonebridge.core.ProtocolException
 import dev.phonebridge.core.identity.Identity
+import dev.phonebridge.core.model.AppMessage
+import dev.phonebridge.core.model.AppMessages
+import dev.phonebridge.core.model.CommandType
 import dev.phonebridge.core.model.PeerRole
+import dev.phonebridge.core.model.StatusArgs
+import dev.phonebridge.core.model.StatusResult
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -197,5 +202,19 @@ class NoiseSessionTest {
         val (opener, _) = handshake()
         val tooBig = ByteArray(NoiseTransport.MAX_PLAINTEXT_BYTES + 1)
         assertFailsWith<ProtocolException> { opener.seal(tooBig) }
+    }
+
+    @Test
+    fun applicationMessagesTravelThroughTheSession() {
+        val (opener, responder) = handshake()
+
+        val request = AppMessages.request("id-1", CommandType.STATUS, StatusArgs)
+        assertEquals(AppMessage.Request(request), responder.openAppMessage(opener.sealRequest(request)))
+
+        val response = AppMessages.response("id-1", CommandType.STATUS, StatusResult(device = "Pixel 9", battery = 90))
+        assertEquals(AppMessage.Response(response), opener.openAppMessage(responder.sealResponse(response)))
+
+        val event = AppMessages.queuePosition(2)
+        assertEquals(AppMessage.Event(event), opener.openAppMessage(responder.sealEvent(event)))
     }
 }

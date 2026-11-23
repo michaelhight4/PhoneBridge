@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/request.schema.json",
+  "title": "ApplicationRequest",
+  "description": "E2E application request from bot to device.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "cmd", "args"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "cmd": { "type": "string", "minLength": 1 },
+    "args": { "type": "object" }
+  }
+}

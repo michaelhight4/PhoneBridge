@@ -1,0 +1,19 @@
+{
+  "root": {
+    "id": "root",
+    "cls": "android.widget.FrameLayout",
+    "text": null,
+    "desc": null,
+    "res_id": null,
+    "bounds": [
+      0,
+      0,
+      1080,
+      1920
+    ],
+    "clickable": false,
+    "focusable": false,
+    "editable": false,
+    "children": []
+  }
+}

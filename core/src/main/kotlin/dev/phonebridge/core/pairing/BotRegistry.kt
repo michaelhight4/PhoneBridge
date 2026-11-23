@@ -161,7 +161,8 @@ class JsonFileBotRegistry(
     private fun load() {
         if (!Files.exists(file)) return
         val text = try {
-            Files.readString(file)
+            // Files.readString is Java 11+, which Android API 26 does not have; read bytes instead.
+            String(Files.readAllBytes(file), Charsets.UTF_8)
         } catch (e: IOException) {
             throw PhoneBridgeException("cannot read bot registry at $file", e)
         }
@@ -188,7 +189,8 @@ class JsonFileBotRegistry(
         val parent = file.toAbsolutePath().parent
         if (parent != null) Files.createDirectories(parent)
         val temp = file.resolveSibling(file.fileName.toString() + ".tmp")
-        Files.writeString(temp, json)
+        // Files.writeString is Java 11+; write bytes so this also runs on Android API 26.
+        Files.write(temp, json.toByteArray(Charsets.UTF_8))
         try {
             Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } catch (e: AtomicMoveNotSupportedException) {

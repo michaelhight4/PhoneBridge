@@ -47,6 +47,13 @@ gradlew.bat :relay:shadowJar                # single-file jar for a VPS
 
 **Blockers:** none. No `origin` remote exists, so there is nothing to push yet.
 
+## 2026-11-23 11:30 -0600 - iceman (Iceman Contributor Free) - JSON Schemas, conformance tests, mock device
+- **Done:** Added `protocol/schema/*.schema.json` (draft 2020-12) for envelope, pairing-offer, pair-request, pair-result, request, response, event, and every command args/result in `docs/PROTOCOL.md`. Added `protocol/examples/` with one valid and at least one invalid example per message. Added `tests/conformance` (Node + vitest + ajv + ajv-formats) validating all examples; includes `src/protocol-samples.test.js` that auto-discovers captured JSON samples from `build/protocol-samples/*.json` (also `core|mcp|relay/build/protocol-samples/*.json`) and validates them when present. Added `tests/mock-device` (Node, `ws`) that connects to a relay as a device, completes hello auth (X25519 + HelloProof HMAC-SHA256), answers every command with realistic fake data (generated PNG screenshot, fake home-screen ui_tree, tap/type/key logging), honours permission levels and FIFO control queue with 120s idle auto-release. Added `docs/TESTING.md`.
+- **Dev mode / crypto:** Mock device uses clearly marked **plaintext dev mode** by default (route payload is base64url UTF-8 JSON). Encrypted E2E path (Noise XX / X25519+XChaCha20-Poly1305 per PROTOCOL) is not implemented here because tasks 01/05 crypto are not merged; add encrypted path once main has them and keep `--plaintext` as explicit dev flag. Relay hello proof is implemented to interop with pb/relay.
+- **Left:** When core/mcp emit `build/protocol-samples/*.json`, conformance will pick them up automatically. When task 01/05 crypto lands, wire encrypted payloads in mock device. Android APK build remains pending SDK.
+- **How to test:** `cd tests/conformance && npm ci && npm test` (186 tests pass). `cd tests/mock-device && npm ci && node src/index.js --help` (starts; connect with `node src/index.js --relay ws://127.0.0.1:8787`).
+- **Blockers:** No GitHub `origin` remote configured; push skipped. Core/mcp crypto not merged; plaintext dev mode used as documented.
+
 ## 2026-11-23 11:26 — ds1 (deepseek-flash / DeepSeek V4.1 Flash) — task 01: protocol, crypto, pairing (`core/`)
 
 **Done** (branch `pb/protocol-pairing`, all in `core/` plus `docs/PROTOCOL.md`, `docs/THIRD_PARTY.md`):
@@ -84,10 +91,18 @@ gradlew.bat :relay:shadowJar                # single-file jar for a VPS
   merged with the Android and relay lanes (kotlinx.serialization Apache-2.0, Bouncy Castle 1.87
   MIT-style, Gson via the relay, AGP build-only); short-code examples in README/SPEC corrected from
   `7K4-Q9M` to a code that passes its own check symbol (`7K4-Q9B`).
-- 108 JVM tests covering every acceptance criterion (JSON round-trips for every message type,
+- 111 JVM tests covering every acceptance criterion (JSON round-trips for every message type,
   handshake + both encryption directions, tampered/replayed ciphertext, short-code check symbol and
   normalisation, link/file round-trip, 10-minute expiry + single use with an injected clock,
-  permission table, arbiter queue/idle/kickAll, chunk/reassemble, relay proof vectors).
+  permission table, arbiter queue/idle/kickAll, chunk/reassemble, relay proof vectors, app messages
+  travelling through a live session).
+- **Android API 26 audit**: `JsonFileBotRegistry` used `Files.readString`/`writeString` (Java 11, not
+  on Android O); it now reads/writes UTF-8 bytes. Everything else is BC lightweight crypto,
+  `java.util.Base64`, `java.nio.file` basics from API 26, or plain Kotlin.
+- **Pairing lifecycle fix**: a pending "Allow this bot?" prompt is no longer dropped when the user
+  creates another offer, and an unanswered prompt expires after ten minutes instead of lingering.
+- **Convenience**: `E2ESession.sealRequest/sealResponse/sealEvent/openAppMessage` carry the typed
+  application messages over a live session, so the transport lanes only move bytes.
 
 **Left / for other lanes**
 

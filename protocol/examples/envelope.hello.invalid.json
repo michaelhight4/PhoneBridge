@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "type": "hello",
+  "from": "abcdefghijklmnopqrstuvwx23",
+  "pub": "QUJDRA==",
+  "sig": "U0lH",
+  "role": "toaster"
+}

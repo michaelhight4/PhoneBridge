@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/commands/release_control.schema.json",
+  "title": "release_control command",
+  "description": "Args and result for release_control (level: Control).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "args",
+    "result"
+  ],
+  "properties": {
+    "args": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "maxProperties": 0
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "maxProperties": 0
+    }
+  },
+  "$defs": {}
+}

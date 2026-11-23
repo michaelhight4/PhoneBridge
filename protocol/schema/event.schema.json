@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonebridge.dev/schema/event.schema.json",
+  "title": "ApplicationEvent",
+  "description": "Unsolicited E2E event from device to bot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event", "data"],
+  "properties": {
+    "event": {
+      "enum": ["notification", "control_changed", "queue_position", "kicked", "relay_moved"]
+    },
+    "data": { "type": "object" }
+  }
+}

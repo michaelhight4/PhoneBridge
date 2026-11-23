@@ -1,4 +1,4 @@
-# Third-party software
+﻿# Third-party software
 
 PhoneBridge is MIT licensed. This file lists every third-party library or algorithm source used, with
 its licence, so the whole dependency tree stays licence-compatible (MIT/Apache/BSD/CC0 preferred; no
@@ -89,6 +89,17 @@ notification and log logic are written here.
 
 None of these are shipped in the phone app, the relay jar or the MCP server; they are invoked by
 `npm test` in `tests/conformance` and `tests/mock-device`.
+
+## Test-only dependencies
+
+| Library | Version | Licence |
+| --- | --- | --- |
+| `kotlin-test` / JUnit 5 | bundled with Kotlin 2.3.0 | Apache-2.0 / EPL-2.0 (test scope only) |
+
+## Assets
+
+None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
+source and author before they are committed.
 
 ## MCP server (`mcp/`)
 

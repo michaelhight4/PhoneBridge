@@ -124,6 +124,19 @@ None of these are shipped in the phone app, the relay jar or the MCP server; the
 None yet. Android UI assets must be free-licensed (MIT/Apache/BSD/CC0) and recorded here with their
 source and author before they are committed.
 
-## MCP server (`mcp/`)
+## MCP server, CLI and bot client (`mcp/`)
 
-Node/TypeScript dependencies are recorded here when that module lands.
+| Library | Version | Licence | Used for |
+| --- | --- | --- | --- |
+| [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk) | 1.32.x | MIT | MCP server (stdio + streamable HTTP) and the in-memory client used in tests |
+| [libsodium-wrappers](https://github.com/jedisct1/libsodium.js) | 0.8.x | ISC (libsodium) | X25519 key agreement, ChaCha20-Poly1305, random bytes |
+| [ws](https://github.com/websockets/ws) | 8.23.x | MIT | WebSocket transport to the relay, plus the in-process mock relay in tests |
+| [zod](https://github.com/colinhacks/zod) | 3.25.x | MIT | MCP tool input schemas |
+| [TypeScript](https://github.com/microsoft/TypeScript) | 5.9.x | Apache-2.0 | Build only. |
+| [Vitest](https://github.com/vitest-dev/vitest) | 5.1.x | MIT | Test runner (dev/test only). |
+| `@types/node`, `@types/ws` | 24 / 8.18 | MIT | Type definitions (dev/test only). |
+
+SHA-256, HMAC-SHA256, HKDF-SHA256 and the Noise handshake are implemented from their published
+specifications (FIPS 180-4, RFC 2104, RFC 5869, Noise revision 34) in `mcp/src/client/`, matching the
+`core/` reference implementation; no third-party protocol code is copied. No GPL/AGPL code is used.
+

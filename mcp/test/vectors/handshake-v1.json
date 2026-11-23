@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "protocol": "PhoneBridge protocol v1 (docs/PROTOCOL.md, core/ is the reference implementation)",
+  "generatedBy": "mcp/scripts/gen-vectors.mjs",
+  "notes": [
+    "peer_id = lowercase Crockford base32 of SHA-256(publicKey)[0..16); fingerprint = first 8 symbols uppercased ABCD-EFGH.",
+    "Short code = 5 Crockford data symbols + CRC-5 check (poly 0x05, init 0x1F, MSB first).",
+    "Noise: Noise_XX_25519_ChaChaPoly_SHA256, prologue ASCII 'PhoneBridge/1/noise-xx'.",
+    "Frames: 0x01 || handshake message, 0x02 || transport ciphertext; the values below are base64url of the whole frame.",
+    "Transport nonce = 64-bit counter little-endian + four zero bytes; AAD empty; ChaCha20-Poly1305 tags are 16 bytes.",
+    "Pairing: HKDF-SHA256(secret, salt 'PhoneBridge/1/pairing', info 'pair-frame') -> ChaCha20-Poly1305 with AAD 'PhoneBridge/1/pair|request|' + device_pub, sealed = nonce(12) || ciphertext || tag.",
+    "Relay hello proof: sig = HMAC-SHA256(X25519(peer_private, relay_pub), 'phonebridge/hello/v1|<relay_id>|<b64url(relay_pub)>|<peer_id>|<b64url(nonce)>').",
+    "Chunks: 256 KiB slices by default; data_b64 is base64url; sha256 is lowercase hex of the whole payload."
+  ],
+  "identities": {
+    "bot": {
+      "secretKey": "727ddf5de589b75abf8bf76476f63d1815b8e01dc483a84f65affceb00bfc458",
+      "publicKey": "5f6d6b59c62f2960f2536377c8917b5c400294a6dbd321ba4eea2239241c362e",
+      "peerId": "mjnjsejn1vm7qyq47vzg120kmr",
+      "fingerprint": "MJNJ-SEJN"
+    },
+    "device": {
+      "secretKey": "5e2ee2b5ab4d1c246d2d768ff2af0ab7398fe86723e75721a9262a7c10897717",
+      "publicKey": "e24b55f5bd54a4f3f2a53922c606176c8665c52f766d4d0836c26c837cd01e24",
+      "peerId": "qkbwwr62xh74gvwkxwge77g370",
+      "fingerprint": "QKBW-WR62"
+    }
+  },
+  "peerIdExample": {
+    "publicKey": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "peerId": "cc6wtab6rgspd48jah4bqcjv9w",
+    "fingerprint": "CC6W-TAB6"
+  },
+  "shortCode": {
+    "examples": [
+      {
+        "data": "7K4Q9",
+        "code": "7K4-Q9B"
+      },
+      {
+        "data": "ZZZZZ",
+        "code": "ZZZ-ZZQ"
+      },
+      {
+        "data": "00000",
+        "code": "000-00T"
+      }
+    ],
+    "vectorCode": "7K4-Q9B"
+  },
+  "relayChallenge": {
+    "ephemeral": {
+      "secretKey": "09eb82c9c42380ec84a2066d81eb15db84e068b7fe90a2a4ac553d78b7e4be7f",
+      "publicKey": "5b1c660249c32a731ced7d2501f6a47cf3277d44af6567d548a63544a3ad7579"
+    },
+    "relayId": "ntmbmre2c7rtxsfyyz7hq8w30g",
+    "nonce": "ad924b3d418113f817e99574c80342551856c733b08195e28230bd9b9d9b23e4",
+    "context": "phonebridge/hello/v1|ntmbmre2c7rtxsfyyz7hq8w30g|WxxmAknDKnMc7X0lAfakfPMnfUSvZWfVSKY1RKOtdXk|mjnjsejn1vm7qyq47vzg120kmr|rZJLPUGBE_gX6ZV0yANCVRhWxzOwgZXigjC9m52bI-Q",
+    "proof": "c9220042311b02906ad0b6c9a79f6e0b2152aa6eaaeb177bc9b68fb48d8122d6"
+  },
+  "pairing": {
+    "secret": "71e795b43d063c0e2b639b00e2cc63366e70f05d71f6763d4a7e0d3535359bcb",
+    "derivedKey": "36fe5242f2f4cc04e6e4d2cde733ecb96725ed9d8cb27bc06b52c767e8689b3c",
+    "code": "7K4-Q9B",
+    "nonce": "74375db7133e1bfa78e96ed8",
+    "requestPlaintext": "{\"v\":1,\"bot_name\":\"vector-bot\",\"bot_pub\":\"X21rWcYvKWDyU2N3yJF7XEAClKbb0yG6TuoiOSQcNi4\",\"requested_level\":\"control\",\"bot_id\":\"mjnjsejn1vm7qyq47vzg120kmr\"}",
+    "sealedRequest": "74375db7133e1bfa78e96ed8b9246963ebd4af55cd0e9203966db657ebe41af7286ce0967e207674b6c3fd030aaafaceeb5eb41b7b87d592cdaf38d1bf956c8f112df82a4bd2bd04e8f7cad4cd42de63e6a2298aae77b60507b87e47d08a754bfe77d70fc748fe18dc0814db9fb78668243022e6712b149e22c987f5f0d5ecfa195366f0b95bd6fdb54fca3aa4efaee141db537908caae1aa3da5b4dd8fc95d206fa0783cbe388cdc9dab8d6a446c9b8cd52a2804c",
+    "resultPlaintext": "{\"v\":1,\"ok\":true,\"granted_level\":\"control\",\"device_name\":\"Vector Pixel\",\"device_id\":\"qkbwwr62xh74gvwkxwge77g370\"}",
+    "sealedResult": "74375db7133e1bfa78e96ed8b9246963ebd4af55c00ac4668c7eae57e5fc5ff32c61e09c6852787eb484bd0352e7edfef55fa4562d87a18298b819db858678b63439c83a3fc3922bcdb4fde3ac51db50e1ac3bdfcb25870601b2544be88d1918e824904fc25afd5b8b030889cf8f9c7a392d39a32e3e40967f8ac5b8e13ec0c8e5988b3723bdf879a542bc6069"
+  },
+  "noise": {
+    "ephemeral": {
+      "bot": {
+        "secretKey": "0190ff1e04468993b43b2dcbfae5ac898aca55d3442b1701a1c8429121332cbc",
+        "publicKey": "a99d5e6c2ad27a3180ddc3e236d8ccd87fc49171f75e80f968b62aaf4c58e548"
+      },
+      "device": {
+        "secretKey": "5a394367a19a7950f8db145ca77ff7e9e5c36757898b15066c443ab2255be9b9",
+        "publicKey": "cd11a4cd74030281949a630d5fc9de090d79bc458ba9e5dd6204450ee368be74"
+      }
+    },
+    "hs1": "AamdXmwq0noxgN3D4jbYzNh_xJFx916A-Wi2Kq9MWOVI",
+    "hs2": "Ac0RpM10AwKBlJpjDV_J3gkNebxFi6nl3WIERQ7jaL50UGtaX9joD9pKLeOT2Lh6JTBAlXKd-sL43vHnOcDpCBv0xd1NjMuOefHDHD8zfv-icDbjwgpQ3ROFfQEQixE9Lw",
+    "hs3": "Ab4FgyaCBY7Oqmwl0jRXUA1VZSLsHKEjF41Mg4ahKAtij7EsWLPDHNAbnYf9nW5bHgIjsK15KZBT_EBgAaUWmPc",
+    "hs1Hex": "01a99d5e6c2ad27a3180ddc3e236d8ccd87fc49171f75e80f968b62aaf4c58e548",
+    "hs2Hex": "01cd11a4cd74030281949a630d5fc9de090d79bc458ba9e5dd6204450ee368be74506b5a5fd8e80fda4a2de393d8b87a25304095729dfac2f8def1e739c0e9081bf4c5dd4d8ccb8e79f1c31c3f337effa27036e3c20a50dd13857d01108b113d2f",
+    "hs3Hex": "01be05832682058eceaa6c25d23457500d556522ec1ca123178d4c8386a1280b628fb12c58b3c31cd01b9d87fd9d6e5b1e0223b0ad79299053fc406001a51698f7",
+    "handshakeHash": "5067133b6e21df037f74c8765eb3587f729e55522256c7dec62149a37795b6b6",
+    "handshakeHashOnDevice": "5067133b6e21df037f74c8765eb3587f729e55522256c7dec62149a37795b6b6",
+    "peerStaticSeenByDevice": "5f6d6b59c62f2960f2536377c8917b5c400294a6dbd321ba4eea2239241c362e",
+    "peerStaticSeenByBot": "e24b55f5bd54a4f3f2a53922c606176c8665c52f766d4d0836c26c837cd01e24"
+  },
+  "transport": {
+    "requestPlaintext": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"cmd\":\"status\",\"args\":{}}",
+    "requestFrame": "Agmm8zKgkmhqzsPlYbxk0nsZ7A47NeNuk33PzsTPUMjxIWOwwsEr2AKKUYHJPP2Jp29n1qIlW3p6u-0FmjugAWTip-FtAD6H6o1zew79agoKNuuR579C",
+    "requestFrameHex": "0209a6f332a092686acec3e561bc64d27b19ec0e3b35e36e937dcfcec4cf50c8f12163b0c2c12bd8028a5181c93cfd89a76f67d6a2255b7a7abbed059a3ba00164e2a7e16d003e87ea8d737b0efd6a0a0a36eb91e7bf42",
+    "eventPlaintext": "{\"event\":\"queue_position\",\"data\":{\"position\":2}}",
+    "eventFrame": "AmzpGCy_h3n4iEBnJlGX2flNtNg0fR3hn2PO_ERXYW02CSceAWGspHr0VCNejA3wp9fw9g1_tAwdIuXidOkKxoU",
+    "eventFrameHex": "026ce9182cbf8779f8884067265197d9f94db4d8347d1de19f63cefc4457616d3609271e0161aca47af454235e8c0df0a7d7f0f60d7fb40c1d22e5e274e90ac685",
+    "nonce0": "000000000000000000000000",
+    "nonce1": "010000000000000000000000"
+  },
+  "chunks": {
+    "payload": "PhoneBridge chunk vector payload",
+    "payloadSha256": "fdb316f822893c4ee637bad71c1cfae530f6344cb9d8e20fdba5a57fece122d4",
+    "chunkSize": 8,
+    "chunks": [
+      {
+        "chunk_id": "AAECAwQFBgc",
+        "index": 0,
+        "total": 4,
+        "data_b64": "UGhvbmVCcmk",
+        "sha256": "fdb316f822893c4ee637bad71c1cfae530f6344cb9d8e20fdba5a57fece122d4"
+      },
+      {
+        "chunk_id": "AAECAwQFBgc",
+        "index": 1,
+        "total": 4,
+        "data_b64": "ZGdlIGNodW4",
+        "sha256": "fdb316f822893c4ee637bad71c1cfae530f6344cb9d8e20fdba5a57fece122d4"
+      },
+      {
+        "chunk_id": "AAECAwQFBgc",
+        "index": 2,
+        "total": 4,
+        "data_b64": "ayB2ZWN0b3I",
+        "sha256": "fdb316f822893c4ee637bad71c1cfae530f6344cb9d8e20fdba5a57fece122d4"
+      },
+      {
+        "chunk_id": "AAECAwQFBgc",
+        "index": 3,
+        "total": 4,
+        "data_b64": "IHBheWxvYWQ",
+        "sha256": "fdb316f822893c4ee637bad71c1cfae530f6344cb9d8e20fdba5a57fece122d4"
+      }
+    ]
+  },
+  "kdf": {
+    "hkdfRfc5869Case1": {
+      "ikm": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+      "salt": "000102030405060708090a0b0c",
+      "info": "f0f1f2f3f4f5f6f7f8f9",
+      "length": 42,
+      "okm": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+    },
+    "hmacSha256": {
+      "key": "6b6579",
+      "data": "64617461",
+      "mac": "5031fe3d989c6d1537a013fa6e739da23463fdaec3b70137d828e36ace221bd0"
+    }
+  }
+}

@@ -5,7 +5,7 @@ through the same end-to-end-encrypted PhoneBridge protocol as the phone app. Not
 connects either to the relay ("the heart") running on this PC or to a relay the user picks.
 
 ```
-gradlew.bat :desktop:test                                     # 92 JVM tests, no display needed
+gradlew.bat :desktop:test                                     # 94 JVM tests, no display needed
 gradlew.bat :desktop:run                                      # the tray app
 gradlew.bat :desktop:run --args="--smoke-ms 6000"             # start, prove it is healthy, quit
 gradlew.bat :desktop:run --args="--data-dir D:\pb --no-window" # different data dir, tray only

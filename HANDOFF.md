@@ -34,7 +34,7 @@ what is left, how to build/test, blockers.
     `settings {namespace,key,value?}` → `{value}` (`null` for unset), `files {op,path,data_b64?}`
     → `{op,entries}` / `{op,data_b64,bytes}` / `{op,ok,bytes}` / `{op,ok}`. `relay_move` is left to the
     relay controller and never touches Shizuku.
-  - **131 JVM tests** (was 74 in executor-core): handler validation/routing, shell timeout, settings
+  - **132 JVM tests** (was 74 in executor-core): handler validation/routing, shell timeout, settings
     get/put and injection rejection, files parse/read/write/delete/caps, install session flow and
     every failure branch, quoting, base64, `ShellRunner` (fake `Process`), executor integration
     (level, control, Shizuku outage).
@@ -60,7 +60,7 @@ is a plain Long); `files list` adds an optional `truncated:true` when the 2000-e
 
 **How to test**
 ```
-gradlew.bat :android:executor-core:test      # 131 tests, no Android SDK needed
+gradlew.bat :android:executor-core:test      # 132 tests, no Android SDK needed
 gradlew.bat test                            # repo-wide
 gradlew.bat :android:app:assembleDebug      # needs an Android SDK + accepted licences (pending)
 ```

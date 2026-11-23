@@ -1,6 +1,6 @@
 package dev.phonebridge.relay.ws
 
-import dev.phonebridge.relay.crypto.Codec
+import dev.phonebridge.core.crypto.Primitives
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.EOFException
@@ -229,7 +229,7 @@ class WebSocketConnection internal constructor(
         }
         var body = payload
         if (isClient) {
-            val key = Codec.randomBytes(4)
+            val key = Primitives.randomBytes(4)
             System.arraycopy(key, 0, header, position, 4)
             position += 4
             body = ByteArray(payload.size) { i -> (payload[i].toInt() xor key[i and 3].toInt()).toByte() }

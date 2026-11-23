@@ -2,14 +2,13 @@ package dev.phonebridge.app
 
 import android.content.Context
 import android.util.Log
-import com.google.gson.JsonParser
 import dev.phonebridge.core.identity.Identity
 import dev.phonebridge.core.model.PairingOffer
 import dev.phonebridge.core.pairing.BotRegistry
 import dev.phonebridge.core.pairing.JsonFileBotRegistry
-import dev.phonebridge.core.pairing.PairingLinks
 import dev.phonebridge.core.pairing.PairingManager
 import dev.phonebridge.core.util.B64Url
+import dev.phonebridge.core.util.PbJson
 import dev.phonebridge.executor.BotSession
 import dev.phonebridge.executor.ErrorCode
 import dev.phonebridge.executor.FullCommandHandler
@@ -30,6 +29,7 @@ import dev.phonebridge.ui.JsonFileActivityLog
 import dev.phonebridge.ui.PairingController
 import dev.phonebridge.ui.RelayController
 import dev.phonebridge.ui.RelayResult
+import kotlinx.serialization.json.jsonObject
 
 /**
  * Owns everything the foreground service runs:
@@ -49,19 +49,6 @@ class BridgeController(
     private val clock: () -> Long = { System.currentTimeMillis() }
 
     val identity: Identity = AppStores.identity(context)
-
-    /**
-     * The relay module keeps its own X25519 key-pair type. It is derived from the same private key,
-     * and the two peer ids must match docs/PROTOCOL.md; the check below makes a mismatch loud instead
-     * of silently routing to the wrong id.
-     */
-    private val relayIdentity: dev.phonebridge.relay.crypto.PeerKeyPair =
-        dev.phonebridge.relay.crypto.PeerKeyPair.fromPrivateKey(identity.privateKey).also { peer ->
-            if (peer.peerId != identity.peerId) {
-                Log.e(TAG, "relay and core peer ids disagree; pairing offers will not route")
-            }
-        }
-
     val registry: BotRegistry = JsonFileBotRegistry(AppStores.registryFile(context), clock)
     val activityLog: ActivityLog = JsonFileActivityLog(AppStores.activityFile(context), clock = clock)
 
@@ -213,7 +200,7 @@ class BridgeController(
         val offer = pairingManager.createOffer(relayUrl, AppStores.deviceName())
         // Publish the offer to the relay's short-code mailbox, so a bot given `7K4-Q9B` can find it.
         runCatching {
-            val json = JsonParser.parseString(PairingLinks.fileContents(offer)).asJsonObject
+            val json = PbJson.encodeToJsonElement(PairingOffer.serializer(), offer).jsonObject
             relayClient?.pairStore(offer.code, json)
         }
         return offer
@@ -224,14 +211,13 @@ class BridgeController(
         previous?.stop()
         val config = RelayClientConfig(
             url = url,
-            identity = relayIdentity,
-            role = "device",
+            identity = identity,
             tlsPin = tlsPin,
             log = { message -> Log.d(TAG, "client: $message") },
         )
         val client = RelayClient(config)
         client.onRoute = { envelope ->
-            runCatching { sessionHandler.onRoute(toCoreEnvelope(envelope)) }
+            runCatching { sessionHandler.onRoute(envelope) }
                 .onFailure { Log.w(TAG, "dropped one relay frame: ${it.message}") }
         }
         client.onStateChanged = { _, _ -> onStateChanged() }
@@ -253,19 +239,6 @@ class BridgeController(
         bridgeState.onBotDisconnected(botId)
         onStateChanged()
     }
-
-    /**
-     * The relay module keeps its own minimal envelope type; convert it to the `:core` protocol type
-     * at this seam. The payload is base64url ciphertext and is never interpreted here.
-     */
-    private fun toCoreEnvelope(envelope: dev.phonebridge.relay.envelope.RelayEnvelope) =
-        dev.phonebridge.core.model.RelayEnvelope(
-            type = envelope.type,
-            from = envelope.from,
-            to = envelope.to,
-            id = envelope.id,
-            payload = envelope.payload,
-        )
 
     private fun postApproval(view: dev.phonebridge.ui.ApprovalView) {
         val seconds = view.secondsRemaining(clock())

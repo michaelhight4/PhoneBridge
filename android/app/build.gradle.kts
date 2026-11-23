@@ -45,6 +45,4 @@ dependencies {
     implementation(project(":relay"))
     // QR encoding for the pairing screen (Apache-2.0, ZXing core only).
     implementation("com.google.zxing:core:3.5.3")
-    // Already a :relay dependency; used directly for the relay short-code mailbox JSON.
-    implementation("com.google.code.gson:gson:2.11.0")
 }

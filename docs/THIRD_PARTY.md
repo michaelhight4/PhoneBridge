@@ -26,26 +26,23 @@ unchanged on the JVM and on Android.
 | Thing | Source | Notes |
 | --- | --- | --- |
 | Noise `XX` handshake, `CipherState`, `SymmetricState`, transport keys | [The Noise Protocol Framework, revision 34](https://noiseprotocol.org/noise.html) | Implemented from the published specification in `core/.../crypto/Noise.kt`; no Noise library code was copied or linked (no maintained JVM Noise library was available under a compatible licence for our needs) |
-| Crockford base32 pairing codes + CRC-5 check symbol | [Crockford base32](https://www.crockford.com/base32.html) alphabet, CRC-5/USB polynomial `0x05` | `core/.../pairing/ShortCode.kt`; the exact algorithm is documented in docs/PROTOCOL.md |
-| Base64url, RFC 4648 base32 | RFC 4648 | `core/.../util/B64Url.kt` uses `java.util.Base64` (present on Android API 26+); `core/.../util/Base32.kt` is local |
+| Crockford base32 (`peer_id`, fingerprint, short codes) + CRC-5 check symbol | [Crockford base32](https://www.crockford.com/base32.html) alphabet, CRC-5/USB polynomial `0x05` | `core/.../util/Base32.kt`, `core/.../pairing/ShortCode.kt`; the exact algorithm is documented in docs/PROTOCOL.md |
+| Base64url | RFC 4648 | `core/.../util/B64Url.kt` uses `java.util.Base64` (present on Android API 26+) |
 | HKDF-SHA256 | RFC 5869 | `core/.../crypto/Primitives.kt` |
+| Relay `hello` key-ownership proof (`dh-hmac-sha256`) | docs/PROTOCOL.md section on the relay handshake | `core/.../crypto/HelloAuth.kt`; HMAC-SHA256 keyed by the X25519 shared secret with the relay's ephemeral key |
 
 ## Relay (`relay/`)
 
-| What | Licence | How it is used |
-| --- | --- | --- |
-| Kotlin standard library, `kotlin("test")` + JUnit 5 | Apache-2.0 / EPL-2.0 | Runtime and test-only, as above. |
-| [Google Gson](https://github.com/google/gson) 2.11.0 | Apache-2.0 | JSON encoding/decoding of relay messages. Small (~280 KB), pure Java, works on Android API 26+ and on a plain JVM, and keeps the relay embeddable in the phone app and the desktop app. Only the routing fields of an envelope are parsed; encrypted payloads are never decoded. |
+The relay has no third-party runtime dependency of its own: it uses the Kotlin standard library and
+`:core` (protocol envelopes, identity, HelloAuth, JSON). The former Gson and duplicate crypto layer
+were removed when the relay moved onto the shared `:core` types.
 
 Implemented in the relay from specifications (no third-party code):
 
 | Area | Specification | Where |
 | --- | --- | --- |
 | WebSocket server and client, framing, masking, close codes | RFC 6455 | `relay/src/main/kotlin/dev/phonebridge/relay/ws/` |
-| X25519 scalar multiplication | RFC 7748 (validated against its section 5.2 and 6.1 test vectors) | `relay/.../crypto/X25519.kt` |
 | Self-signed X.509 v1 certificate and PKCS#12 storage | RFC 5280 / PKCS#12 | `relay/.../crypto/Tls.kt` |
-| Crockford base32, check symbols, confusable mapping | Crockford base32 specification | `relay/.../crypto/Base32.kt` (short codes and `peer_id`, matching `:core`) |
-| SHA-256 and HMAC-SHA256 | FIPS 180-4 / RFC 2104, via `java.security` / `javax.crypto` | `relay/.../crypto/Codec.kt` |
 | TLS transport | JSSE (`javax.net.ssl`), part of the JDK and Android | `relay/.../crypto/Tls.kt` |
 
 ### Why the relay's WebSocket layer is not a library
@@ -74,8 +71,8 @@ in the Android app, on the desktop and on a VPS. It ships no images, fonts or ot
 | Android Gradle plugin `com.android.application` 9.0.1 | Apache-2.0 | Build only, resolved from `google()` in `settings.gradle.kts` `pluginManagement`. Not shipped in the APK. |
 | Android platform APIs (`android.*`, `AndroidX`-free) | Apache-2.0 | Used directly through the SDK; the app uses plain platform `Activity` + views, so no AndroidX/Compose is bundled. |
 | `:core` (this repo) | MIT | Shared protocol/crypto/pairing library and JSON bot registry; consumed as a Gradle project dependency. |
+| `:relay` (this repo) | MIT | Embedded relay (`Relay.start`) and the reconnecting `RelayClient`; consumed as a Gradle project dependency. |
 | [ZXing core](https://github.com/zxing/zxing) (`com.google.zxing:core`) 3.5.3 | Apache-2.0 | Encoding the `phonebridge://pair?...` link into the pairing QR bitmap. Core only (no `android-core`/`zxing-android-embedded`), about 500 KB, works on Android API 26+. |
-| [Google Gson](https://github.com/google/gson) 2.11.0 | Apache-2.0 | Already a `:relay` dependency; the app uses the same artifact for the relay short-code mailbox JSON. |
 
 Nothing was copied in from another project for the Android tasks; the accessibility tree mapping,
 gesture dispatch, command routing, permission checks, control queue, pairing countdown, bot list,

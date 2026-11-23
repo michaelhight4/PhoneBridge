@@ -1,10 +1,12 @@
 package dev.phonebridge.relay
 
-import com.google.gson.JsonObject
-import dev.phonebridge.relay.crypto.Codec
-import dev.phonebridge.relay.crypto.PeerKeyPair
-import dev.phonebridge.relay.envelope.RelayEnvelope
-import dev.phonebridge.relay.json.Json
+import dev.phonebridge.core.identity.Identity
+import dev.phonebridge.core.model.PeerRole
+import dev.phonebridge.core.model.RelayEnvelope
+import dev.phonebridge.core.model.RelayType
+import dev.phonebridge.core.util.B64Url
+import dev.phonebridge.relay.client.RelayClientError
+import dev.phonebridge.core.crypto.Primitives
 import java.net.URL
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,14 +14,11 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RelayAuthTest {
-    private fun errorCode(obj: JsonObject?): String? =
-        obj?.let { Json.objOrNull(it, "error") }?.let { Json.string(it, "code") }
-
     @Test
     fun `two peers authenticate and exchange envelopes in both directions`() {
         val relay = TestSupport.testRelay()
-        val device = TestSupport.client(relay, role = "device")
-        val bot = TestSupport.client(relay, role = "bot")
+        val device = TestSupport.client(relay, Identity.generate(PeerRole.DEVICE))
+        val bot = TestSupport.client(relay, Identity.generate(PeerRole.BOT))
         val atDevice = TestSupport.Collector<RelayEnvelope>()
         val atBot = TestSupport.Collector<RelayEnvelope>()
         device.onRoute = { atDevice.add(it) }
@@ -31,10 +30,10 @@ class RelayAuthTest {
             assertTrue(bot.awaitConnected(5000), "bot did not connect")
             assertEquals(setOf(device.peerId, bot.peerId), relay.peers().toSet())
 
-            val payload = Codec.b64url(Codec.randomBytes(1500))
+            val payload = B64Url.encode(Primitives.randomBytes(1500))
             val id = bot.sendRoute(device.peerId, payload)
             val delivered = assertNotNull(atDevice.await(), "the device received nothing")
-            assertEquals("route", delivered.type)
+            assertEquals(RelayType.ROUTE, delivered.type)
             assertEquals(bot.peerId, delivered.from)
             assertEquals(device.peerId, delivered.to)
             assertEquals(payload, delivered.payload)
@@ -59,12 +58,12 @@ class RelayAuthTest {
     fun `peer offline is reported to the sender`() {
         val relay = TestSupport.testRelay()
         val bot = TestSupport.client(relay)
-        val errors = TestSupport.Collector<dev.phonebridge.relay.client.RelayClientError>()
+        val errors = TestSupport.Collector<RelayClientError>()
         bot.onError = { errors.add(it) }
         try {
             bot.start()
             assertTrue(bot.awaitConnected(5000))
-            val missing = PeerKeyPair.generate().peerId
+            val missing = Identity.generate(PeerRole.DEVICE).peerId
             val id = bot.sendRoute(missing, "AAAA")
             val error = assertNotNull(errors.awaitWhere { it.id == id }, "no peer_offline error")
             assertEquals("peer_offline", error.code)
@@ -79,17 +78,17 @@ class RelayAuthTest {
     fun `ping is answered with pong`() {
         val relay = TestSupport.testRelay()
         val bot = TestSupport.client(relay)
-        val messages = TestSupport.Collector<JsonObject>()
+        val messages = TestSupport.Collector<RelayEnvelope>()
         bot.onMessage = { messages.add(it) }
         try {
             bot.start()
             assertTrue(bot.awaitConnected(5000))
             bot.ping("ping-42")
             val pong = assertNotNull(
-                messages.awaitWhere { Json.string(it, "type") == "pong" },
+                messages.awaitWhere { it.type == RelayType.PONG },
                 "no pong"
             )
-            assertEquals("ping-42", Json.string(pong, "id"))
+            assertEquals("ping-42", pong.id)
         } finally {
             bot.stop()
             relay.stop()
@@ -100,21 +99,20 @@ class RelayAuthTest {
     fun `a route before hello is rejected as unauthorised`() {
         val relay = TestSupport.testRelay()
         try {
-            RawPeer(PeerKeyPair.generate(), relay.url).use { peer ->
+            RawPeer(Identity.generate(PeerRole.BOT), relay.url).use { peer ->
                 peer.open()
                 peer.send(
-                    Json.obj(
-                        "v" to 1,
-                        "type" to "route",
-                        "from" to peer.identity.peerId,
-                        "to" to PeerKeyPair.generate().peerId,
-                        "id" to "1",
-                        "payload" to "AAAA"
+                    RelayEnvelope(
+                        type = RelayType.ROUTE,
+                        from = peer.identity.peerId,
+                        to = Identity.generate(PeerRole.DEVICE).peerId,
+                        id = "1",
+                        payload = "AAAA"
                     )
                 )
-                val reply = peer.readJson()
-                assertEquals("error", Json.string(reply ?: JsonObject(), "type"))
-                assertEquals("unauthorized", errorCode(reply))
+                val reply = peer.readEnvelope()
+                assertEquals(RelayType.ERROR, reply?.type)
+                assertEquals("unauthorized", TestSupport.errorCode(reply))
             }
         } finally {
             relay.stop()
@@ -125,12 +123,12 @@ class RelayAuthTest {
     fun `a forged hello proof is rejected`() {
         val relay = TestSupport.testRelay()
         try {
-            RawPeer(PeerKeyPair.generate(), relay.url).use { peer ->
+            RawPeer(Identity.generate(PeerRole.BOT), relay.url).use { peer ->
                 peer.open()
-                peer.helloSigned(proofOverride = Codec.b64url(Codec.randomBytes(32)))
-                val reply = peer.readJson()
-                assertEquals("error", Json.string(reply ?: JsonObject(), "type"))
-                assertEquals("unauthorized", errorCode(reply))
+                peer.helloSigned(proofOverride = RawPeer.randomProof())
+                val reply = peer.readEnvelope()
+                assertEquals(RelayType.ERROR, reply?.type)
+                assertEquals("unauthorized", TestSupport.errorCode(reply))
                 assertTrue(relay.peers().isEmpty())
             }
         } finally {
@@ -142,11 +140,11 @@ class RelayAuthTest {
     fun `a hello whose peer id does not match the public key is rejected`() {
         val relay = TestSupport.testRelay()
         try {
-            RawPeer(PeerKeyPair.generate(), relay.url).use { peer ->
+            RawPeer(Identity.generate(PeerRole.BOT), relay.url).use { peer ->
                 peer.open()
-                peer.helloSigned(fromOverride = PeerKeyPair.generate().peerId)
-                val reply = peer.readJson()
-                assertEquals("unauthorized", errorCode(reply))
+                peer.helloSigned(fromOverride = Identity.generate(PeerRole.DEVICE).peerId)
+                val reply = peer.readEnvelope()
+                assertEquals("unauthorized", TestSupport.errorCode(reply))
             }
         } finally {
             relay.stop()
@@ -157,11 +155,11 @@ class RelayAuthTest {
     fun `a hello that reuses another connection nonce is rejected`() {
         val relay = TestSupport.testRelay()
         try {
-            RawPeer(PeerKeyPair.generate(), relay.url).use { peer ->
+            RawPeer(Identity.generate(PeerRole.BOT), relay.url).use { peer ->
                 peer.open()
-                peer.helloSigned(nonceOverride = Codec.b64url(Codec.randomBytes(32)))
-                val reply = peer.readJson()
-                assertEquals("unauthorized", errorCode(reply))
+                peer.helloSigned(nonceOverride = B64Url.encode(Primitives.randomBytes(32)))
+                val reply = peer.readEnvelope()
+                assertEquals("unauthorized", TestSupport.errorCode(reply))
             }
         } finally {
             relay.stop()
@@ -172,11 +170,11 @@ class RelayAuthTest {
     fun `a hello with an all zero public key is rejected`() {
         val relay = TestSupport.testRelay()
         try {
-            RawPeer(PeerKeyPair.generate(), relay.url).use { peer ->
+            RawPeer(Identity.generate(PeerRole.BOT), relay.url).use { peer ->
                 peer.open()
-                peer.helloSigned(publicKeyOverride = Codec.b64url(ByteArray(32)))
-                val reply = peer.readJson()
-                assertEquals("unauthorized", errorCode(reply))
+                peer.helloSigned(publicKeyOverride = B64Url.encode(ByteArray(32)))
+                val reply = peer.readEnvelope()
+                assertEquals("unauthorized", TestSupport.errorCode(reply))
             }
         } finally {
             relay.stop()
@@ -187,34 +185,33 @@ class RelayAuthTest {
     fun `a hello sent before the challenge is answered with the challenge`() {
         val relay = TestSupport.testRelay()
         try {
-            RawPeer(PeerKeyPair.generate(), relay.url).use { peer ->
+            RawPeer(Identity.generate(PeerRole.BOT), relay.url).use { peer ->
                 peer.open(readChallenge = false)
                 // Exactly what a peer following docs/PROTOCOL.md literally would send first.
                 peer.send(
-                    Json.obj(
-                        "v" to 1,
-                        "type" to "hello",
-                        "from" to peer.identity.peerId,
-                        "pub" to Codec.b64url(peer.identity.publicKey),
-                        "role" to "bot"
+                    RelayEnvelope(
+                        type = RelayType.HELLO,
+                        from = peer.identity.peerId,
+                        pub = peer.identity.publicKeyBase64,
+                        role = PeerRole.BOT
                     )
                 )
-                val challenge = assertNotNull(peer.readJson())
-                assertEquals("challenge", Json.string(challenge, "type"))
+                val challenge = assertNotNull(peer.readEnvelope())
+                assertEquals(RelayType.CHALLENGE, challenge.type)
                 peer.adoptChallenge(challenge)
                 peer.helloSigned()
 
                 // The relay also answered the first, nonce-less hello with this challenge, so skip
                 // any extra challenge frames until the hello_ok arrives.
-                var reply: JsonObject? = null
+                var reply: RelayEnvelope? = null
                 for (attempt in 0 until 3) {
-                    val next = peer.readJson() ?: break
-                    if (Json.string(next, "type") == "hello_ok") {
+                    val next = peer.readEnvelope() ?: break
+                    if (next.type == RelayType.HELLO_OK) {
                         reply = next
                         break
                     }
                 }
-                assertEquals("hello_ok", Json.string(assertNotNull(reply), "type"))
+                assertEquals(RelayType.HELLO_OK, reply?.type)
             }
         } finally {
             relay.stop()
@@ -225,8 +222,8 @@ class RelayAuthTest {
     fun `an authenticated peer cannot spoof another sender`() {
         val relay = TestSupport.testRelay()
         val bot = TestSupport.client(relay)
-        val victim = TestSupport.client(relay, role = "device")
-        val errors = TestSupport.Collector<dev.phonebridge.relay.client.RelayClientError>()
+        val victim = TestSupport.client(relay, Identity.generate(PeerRole.DEVICE))
+        val errors = TestSupport.Collector<RelayClientError>()
         bot.onError = { errors.add(it) }
         try {
             bot.start()
@@ -234,13 +231,12 @@ class RelayAuthTest {
             assertTrue(bot.awaitConnected(5000))
             assertTrue(victim.awaitConnected(5000))
             bot.sendRaw(
-                Json.obj(
-                    "v" to 1,
-                    "type" to "route",
-                    "from" to victim.peerId,
-                    "to" to victim.peerId,
-                    "id" to "spoof",
-                    "payload" to "AAAA"
+                RelayEnvelope(
+                    type = RelayType.ROUTE,
+                    from = victim.peerId,
+                    to = victim.peerId,
+                    id = "spoof",
+                    payload = "AAAA"
                 )
             )
             val error = assertNotNull(errors.awaitWhere { it.code == "bad_envelope" })

@@ -1,14 +1,14 @@
 package dev.phonebridge.relay
 
-import com.google.gson.JsonObject
+import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Short-code mailbox for pairing offers.
  *
- * A device stores its pairing offer under a short code (`7K4-Q9M`); a bot looks the code up once and
- * receives the offer. The entry is released by the first successful lookup, expires after
- * [ttlMs] and is never handed out twice.
+ * A device stores its pairing offer under a short code (`7K4-Q9B`); a bot looks the code up once and
+ * receives the offer. The entry is released by the first successful lookup, expires after [ttlMs] and
+ * is never handed out twice.
  */
 internal class PairMailbox(
     private val ttlMs: Long,
@@ -24,7 +24,7 @@ internal class PairMailbox(
 
     class MailboxFullException(message: String) : Exception(message)
 
-    private data class Entry(val offer: JsonObject, val expiresAt: Long, val approximateBytes: Int)
+    private data class Entry(val offer: JsonObject, val expiresAt: Long)
 
     private val entries = ConcurrentHashMap<String, Entry>()
 
@@ -34,12 +34,11 @@ internal class PairMailbox(
     fun store(codeKey: String, offer: JsonObject): Long {
         purgeExpired()
         if (entries.size >= maxEntries) throw MailboxFullException("the pairing mailbox is full")
-        val approximateBytes = offer.toString().length
-        if (approximateBytes > maxOfferBytes) {
+        if (offer.toString().length > maxOfferBytes) {
             throw MailboxFullException("pairing offer is larger than $maxOfferBytes bytes")
         }
         val expiresAt = clock() + ttlMs
-        entries[codeKey] = Entry(offer, expiresAt, approximateBytes)
+        entries[codeKey] = Entry(offer, expiresAt)
         return expiresAt
     }
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Accessibility service configuration for PhoneBridge.
+  - canRetrieveWindowContent: read the UI tree (ui_tree, node_id taps).
+  - flagReportViewIds: expose resource ids (res_id in the protocol Node).
+  - canPerformGestures: tap / long_press / swipe via dispatchGesture.
+  - canTakeScreenshot: accessibility screenshots on API 30+.
+  - flagRequestFilterKeyEvents is deliberately NOT set: PhoneBridge does not intercept the user's
+    physical keys, it only asks the device for global actions.
+  - flagIncludeNotImportantViews: many app views are marked "not important for accessibility" but a
+    bot still needs them; flagRetrieveInteractiveWindows lets us look at more than the active window.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewFocused|typeViewClicked|typeViewLongClicked|typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100"
+    android:summary="@string/accessibility_service_summary" />

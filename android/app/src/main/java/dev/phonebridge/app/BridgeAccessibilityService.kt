@@ -108,15 +108,24 @@ class BridgeAccessibilityService : AccessibilityService() {
     // -------------------------------------------------------------------- text
 
     /**
-     * Type [text] into [nodeId] when it resolves to an editable node, otherwise into the focused
-     * input. Uses `ACTION_SET_TEXT` first and falls back to clipboard + `ACTION_PASTE` for editors
-     * that ignore `ACTION_SET_TEXT` (some WebViews and OEM dialers).
+     * Type [text] into [nodeId] when one is given, otherwise into the focused input.
+     *
+     * Uses `ACTION_SET_TEXT` first and falls back to clipboard + `ACTION_PASTE` for editors that
+     * ignore `ACTION_SET_TEXT` (some WebViews and OEM dialers). When a `node_id` was given but no
+     * longer resolves, this fails instead of typing into whatever happens to be focused.
      */
     fun typeText(text: String, nodeId: String?): Boolean {
-        val requested = nodeId?.let { treeReader.findNode(it) }
-        val target = requested?.takeIf { it.isEditable } ?: focusedInput()
-        if (target != null && target.isEditable && setText(target, text)) return true
-        return pasteText(text)
+        if (nodeId != null) {
+            val requested = treeReader.findNode(nodeId) ?: return false
+            if (requested.isEditable && setText(requested, text)) return true
+            if (!requested.isFocused) requested.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            if (requested.isEditable && setText(requested, text)) return true
+            return paste(requested, text)
+        }
+
+        val focused = focusedInput() ?: return false
+        if (focused.isEditable && setText(focused, text)) return true
+        return paste(focused, text)
     }
 
     private fun setText(node: AccessibilityNodeInfo, text: String): Boolean {
@@ -127,14 +136,14 @@ class BridgeAccessibilityService : AccessibilityService() {
         return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
     }
 
-    private fun pasteText(text: String): Boolean {
+    /** Clipboard fallback: copy the text, then ask [node] to paste it. */
+    private fun paste(node: AccessibilityNodeInfo, text: String): Boolean {
         val clipboard = getSystemService(ClipboardManager::class.java) ?: return false
         val copied = runCatching {
             clipboard.setPrimaryClip(ClipData.newPlainText(CLIPBOARD_LABEL, text))
         }.isSuccess
         if (!copied) return false
-        val focus = focusedInput() ?: return false
-        return focus.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+        return node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
     }
 
     private fun focusedInput(): AccessibilityNodeInfo? = try {

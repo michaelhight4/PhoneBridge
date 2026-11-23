@@ -5,7 +5,7 @@ Three Gradle projects:
 | Project | What | Builds without an Android SDK? |
 | --- | --- | --- |
 | `:android:executor-core` (`android/executor-core`) | Plain Kotlin/JVM: protocol `Request`/`Response`, permission levels, control arbitration, argument parsing, UI-tree node ids, `DeviceControl` seam, settings deep-link constants. | Yes — `gradlew.bat :android:executor-core:test` |
-| `:android:ui-core` (`android/ui-core`) | Plain Kotlin/JVM: pairing countdown/expiry, approve/deny flow, paired-bot list state, activity log (with a JSON-file store), relay host choice, onboarding checklist, notification text, `:core` wire ↔ executor conversion. | Yes — `gradlew.bat :android:ui-core:test` |
+| `:android:ui-core` (`android/ui-core`) | Plain Kotlin/JVM: pairing countdown/expiry, approve/deny flow, paired-bot list state, activity log (with a JSON-file store), relay host choice, onboarding checklist, notification text, the Noise session/request routing seam, and `:core` wire ↔ executor conversion. | Yes — `gradlew.bat :android:ui-core:test` |
 | `:android:app` (`android/app`) | The APK: `BridgeService` (foreground, relay client + embedded relay), `BridgeAccessibilityService`, `AndroidDeviceControl`, pairing and approval screens, bot list, activity log, relay screen, onboarding. | No — needs an SDK; included only when one is found |
 
 `settings.gradle.kts` includes `:android:app` only when `ANDROID_HOME`, `ANDROID_SDK_ROOT` or

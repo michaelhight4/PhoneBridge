@@ -19,8 +19,12 @@ branch `pb/android-service-pairing-ui`.
   executor tests stay green.
 
 **Done**
-- **`android/ui-core`** — new plain Kotlin/JVM module (always in the build, no `android.*`), 39 JVM
+- **`android/ui-core`** — new plain Kotlin/JVM module (always in the build, no `android.*`), 44 JVM
   tests:
+  - `SessionHandler`: the transport seam, tested with a real bot-side `E2ESession`: Noise `XX`
+    responder handshake with key pinning, sealed request → executor → sealed response, a sealed
+    `kicked` event, disabled bots ignored, tampered ciphertext drops the session, and a sealed
+    `pair_request` decrypted against the live offer.
   - `PairingController`: one live offer, QR/link/file payloads, 10-minute countdown (rounded up),
     expiry, regenerate burns the old secret, cancel.
   - `ApprovalController`: wraps `:core` `PairingManager`; name/fingerprint/requested level, level
@@ -43,11 +47,12 @@ branch `pb/android-service-pairing-ui`.
     (`bots.v1.json`), activity log, `PairingManager`; starts the embedded relay (`:relay`
     `Relay.start`, port 0, self-signed TLS, pin exposed) when this phone is the heart; keeps the
     outbound `:relay` `RelayClient` (Wi-Fi or mobile data, backoff, follows `relay_moved`).
-  - `SessionHandler`: Noise `XX` responder per paired bot with the paired public key pinned,
-    decrypts `AppRequest` → `BridgeRuntime.handle` → sealed `AppResponse`, `queue_position` event,
-    `control_changed` broadcast, sealed `kicked` on disable/unpair/kick. Pairing requests from an
-    unknown peer are decrypted against live offers and become a pending approval. `relay_move`
-    (`to:"this"` or a `wss://` URL) is implemented as the Full-level handler.
+  - `SessionHandler` (in `:android:ui-core`, so it is JVM tested): Noise `XX` responder per paired
+    bot with the paired public key pinned, decrypts `AppRequest` → `BridgeRuntime.handle` → sealed
+    `AppResponse`, `queue_position` event, `control_changed` broadcast, sealed `kicked` on
+    disable/unpair/kick. Pairing requests from an unknown peer are decrypted against live offers and
+    become a pending approval. `relay_move` (`to:"this"` or a `wss://` URL) is implemented as the
+    Full-level handler.
   - `BridgeNotifications`: low-importance ongoing notification naming the controller (`No bot in
     control` when nobody is) with **Stop** and **Kick everyone**; high-importance full-screen
     `ApprovalActivity` notification for "Allow this bot?".
@@ -64,7 +69,7 @@ branch `pb/android-service-pairing-ui`.
 
 **How to test**
 ```
-gradlew.bat :android:ui-core:test         # 39 view-model/state tests (acceptance)
+gradlew.bat :android:ui-core:test         # 44 view-model/state/transport tests (acceptance)
 gradlew.bat :android:executor-core:test   # 75 executor tests, incl. kickAll
 gradlew.bat :core:test                    # 111 core tests
 gradlew.bat :relay:test                   # 33 relay tests on the shared :core types
@@ -82,8 +87,8 @@ The app module is not included without an SDK, so `assembleDebug` was not run.
   NAT traversal / a tiny VPS relay is a later task.
 - MediaProjection screenshots below API 30, the NotificationListenerService, and Shizuku (Full:
   `install_apk`, `shell`, `files`, `settings`) remain earlier-task gaps; `relay_move` is now wired.
-- `E2ESession` handling is in `SessionHandler` (app module) and was reviewed but not JVM-tested
-  end-to-end; a future task could move it behind a plain-Kotlin seam and add a fake relay test.
+- `E2ESession` handling now lives in `:android:ui-core` (`SessionHandler`) and is covered by the
+  tests above with a real bot-side handshake; the Android service only wires it to the relay client.
 - Pairing file export uses the system share sheet through `PairingFileProvider`; there is no
   "save to Files" button beyond what the share sheet offers.
 - `relay_move {to:"this"}` starts the embedded relay and re-points this phone's own client. A full

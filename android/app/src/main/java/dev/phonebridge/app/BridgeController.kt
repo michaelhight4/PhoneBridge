@@ -29,6 +29,7 @@ import dev.phonebridge.ui.JsonFileActivityLog
 import dev.phonebridge.ui.PairingController
 import dev.phonebridge.ui.RelayController
 import dev.phonebridge.ui.RelayResult
+import dev.phonebridge.ui.SessionHandler
 import kotlinx.serialization.json.jsonObject
 
 /**

@@ -195,7 +195,18 @@ export class DeviceSession {
       this.pending.set(id, { id, cmd, resolve, reject, timer });
     });
     for (const frame of frames) {
-      this.relay.sendRoute(this.device.peerId, frame);
+      try {
+        this.relay.sendRoute(this.device.peerId, frame);
+      } catch (error) {
+        const pending = this.pending.get(id);
+        if (pending !== undefined) {
+          this.pending.delete(id);
+          clearTimeout(pending.timer);
+        }
+        throw error instanceof PhoneBridgeError
+          ? error
+          : new PhoneBridgeError("peer_offline", "could not send the request to the relay");
+      }
     }
     return promise;
   }

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * `phonebridge` CLI — the same commands as the MCP server, for scripts and bots that can only run
  * shell commands.

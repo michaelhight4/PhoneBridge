@@ -16,6 +16,8 @@ import { counterNonce, open as aeadOpen, seal as aeadSeal } from "./crypto.js";
 import { PhoneBridgeError } from "./errors.js";
 
 export const MAX_CHUNK_BYTES = 32 * 1024;
+/** Hard cap on a reassembled message so a hostile peer cannot exhaust memory. */
+export const MAX_REASSEMBLED_BYTES = 24 * 1024 * 1024;
 
 const AAD = utf8(DATA_AAD_LABEL);
 
@@ -149,6 +151,10 @@ export class ChunkAssembler {
     for (const part of entry.parts) {
       if (part === undefined) return undefined;
       size += part.length;
+    }
+    if (size > MAX_REASSEMBLED_BYTES) {
+      this.pending.delete(cid);
+      throw new PhoneBridgeError("bad_args", "peer sent a chunked message that is too large");
     }
     this.pending.delete(cid);
     const joined = concatBytes(...(entry.parts as Uint8Array[]));

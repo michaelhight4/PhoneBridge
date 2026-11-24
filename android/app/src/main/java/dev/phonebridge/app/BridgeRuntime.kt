@@ -144,6 +144,8 @@ object BridgeRuntime {
         val data = mediaProjectionData ?: return null
         mediaProjection?.let { return it }
         val manager = ctx.getSystemService(MediaProjectionManager::class.java) ?: return null
+        // Android 14+ needs a running foreground service of type mediaProjection before this call.
+        BridgeHub.service?.enterForeground(withProjection = true)
         return try {
             val mp = manager.getMediaProjection(code, data)
             mediaProjection = mp

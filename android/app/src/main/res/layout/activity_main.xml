@@ -72,6 +72,26 @@
             android:text="@string/main_open_settings" />
 
         <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/main_restricted_hint"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/open_app_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/main_open_app_info" />
+
+        <Button
+            android:id="@+id/open_last_crash"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:text="@string/crash_title" />
+
+        <TextView
             android:id="@+id/shizuku_state"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

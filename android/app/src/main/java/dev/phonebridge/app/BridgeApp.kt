@@ -10,6 +10,7 @@ import android.app.Application
 class BridgeApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        CrashReporter.install(this)
         BridgeRuntime.init(this)
     }
 }

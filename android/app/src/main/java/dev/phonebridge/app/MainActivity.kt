@@ -68,10 +68,19 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.test_screen_read).setOnClickListener {
             showScreenReadResult()
         }
+        findViewById<Button>(R.id.open_app_info).setOnClickListener {
+            SettingsLinks.openAppInfo(this)
+        }
+        findViewById<Button>(R.id.open_last_crash).setOnClickListener {
+            startActivity(Intent(this, CrashActivity::class.java))
+        }
+        if (CrashReporter.takeUnseen(this)) startActivity(Intent(this, CrashActivity::class.java))
     }
 
     override fun onResume() {
         super.onResume()
+        findViewById<Button>(R.id.open_last_crash).visibility =
+            if (CrashReporter.lastCrash(this) != null) android.view.View.VISIBLE else android.view.View.GONE
         refresh()
         refreshShizukuState()
     }

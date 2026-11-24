@@ -56,4 +56,13 @@ object SettingsLinks {
         return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
             .any { info -> ComponentName.unflattenFromString(info.id) == expected }
     }
+
+    /** App info, where Android hides "Allow restricted settings" (three-dot menu) for sideloaded apps. */
+    fun openAppInfo(context: android.content.Context) {
+        val intent = android.content.Intent(
+            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            android.net.Uri.fromParts("package", context.packageName, null),
+        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
+    }
 }

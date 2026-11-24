@@ -4,8 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- targetSdk 36 requires a type for every foreground service; the bridge is both. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- targetSdk 36 requires a type for every foreground service. The bridge runs as specialUse and
+         adds mediaProjection only after the user grants screen capture. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -78,6 +78,11 @@
             android:label="@string/onboarding_title" />
 
         <activity
+            android:name=".CrashActivity"
+            android:exported="false"
+            android:label="@string/crash_title" />
+
+        <activity
             android:name=".ShizukuPermissionActivity"
             android:exported="false"
             android:label="@string/shizuku_title" />
@@ -118,7 +123,7 @@
         <service
             android:name=".BridgeService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice|mediaProjection|specialUse"
+            android:foregroundServiceType="mediaProjection|specialUse"
             android:stopWithTask="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

@@ -144,4 +144,12 @@
     <string name="shizuku_already_ready">Shizuku is already running and PhoneBridge is allowed.</string>
     <string name="shizuku_reboot_hint">Shizuku has to be started again after every reboot. Open the Shizuku app and start it, then come back here.</string>
     <string name="shizuku_footer">Only bots you pair with the Full level can use these commands, and one bot drives at a time. You can revoke the permission in Shizuku at any point.</string>
+    <string name="main_restricted_hint">If Android says this setting is restricted (common for apps not from the Play Store), open App info, tap the three-dot menu at the top right, choose \"Allow restricted settings\", then come back and switch the service on.</string>
+    <string name="main_open_app_info">Open App info (allow restricted settings)</string>
+    <string name="crash_title">Last crash</string>
+    <string name="crash_hint">PhoneBridge stopped unexpectedly last time. The report below stays on this phone. Copy it and send it to whoever helps you with PhoneBridge.</string>
+    <string name="crash_none">No crash has been recorded.</string>
+    <string name="crash_copy">Copy</string>
+    <string name="crash_copied">Crash report copied</string>
+    <string name="crash_clear">Clear</string>
 </resources>

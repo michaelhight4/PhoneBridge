@@ -99,19 +99,25 @@ export class PhoneBridgeClient {
       ...(options.now === undefined ? {} : { now: options.now }),
     });
 
-    const initialRelayUrl = parsed.kind === "offer" ? parsed.offer.relay : parsed.relayUrl;
+    const initialOffer = parsed.kind === "offer" ? relayOverride(parsed.offer, options.relayUrl) : undefined;
+    const initialRelayUrl = parsed.kind === "offer" ? (initialOffer?.relay ?? parsed.offer.relay) : parsed.relayUrl;
     const relay = new RelayConnection({
       url: initialRelayUrl,
       role: "bot",
       identity: await this.keystore.identity(),
-      relayPin: parsed.kind === "offer" ? parsed.offer.relayPin : undefined,
+      relayPin: initialOffer?.relayPin,
       ...(this.options.insecureDev === undefined ? {} : { insecureDev: this.options.insecureDev }),
     });
 
     try {
       await relay.connect();
-      const offer =
+      const advertised =
         parsed.kind === "offer" ? parsed.offer : await this.lookupOffer(relay, parsed.code, options);
+      // A bot outside the device's network (for example in the cloud) reaches the heart through a
+      // tunnel or public hostname, not the LAN address the device advertises. When the caller names
+      // a relay URL, remember that one; the advertised certificate pin only applies to the advertised
+      // URL, so a different URL is checked against the system CAs instead.
+      const offer = relayOverride(advertised, parsed.kind === "offer" ? options.relayUrl : parsed.relayUrl);
 
       const identity = await this.keystore.identity();
       const requestedLevel = options.requestedLevel ?? "control";
@@ -365,3 +371,9 @@ function reasonErrorCode(reason: string): "permission_denied" | "expired" | "han
 }
 
 export { isPhoneBridgeError };
+
+/** Use `url` instead of the offer's advertised relay; the certificate pin only holds for the same URL. */
+function relayOverride<T extends { relay: string; relayPin?: string | undefined }>(offer: T, url: string | undefined): T {
+  if (url === undefined || url.trim() === "" || url.trim() === offer.relay) return offer;
+  return { ...offer, relay: url.trim(), relayPin: undefined };
+}

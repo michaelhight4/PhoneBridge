@@ -141,7 +141,7 @@ Commands:
 Options:
   -d, --device <ref>     Paired device: peer_id, prefix, name or fingerprint
       --home <dir>       Keystore directory (default $PHONEBRIDGE_HOME or ~/.phonebridge)
-  -r, --relay <url>      Relay URL for pairing with a short code
+  -r, --relay <url>      Relay URL to reach the device: needed with a short code, and overrides a link/file relay (e.g. a public tunnel URL)
       --level <lvl>      Requested level when pairing: view|control|full
       --name <name>      Bot name shown on the phone
       --timeout <ms>     Request timeout

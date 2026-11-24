@@ -95,6 +95,29 @@ describe("pairing and Noise sessions over a mock relay", () => {
     }
   });
 
+  it("remembers the relay URL the bot was given instead of the advertised one", async () => {
+    const relay = new MockRelay();
+    await relay.listen();
+    const home = await tempHome();
+    const device = await MockDevice.create({ relayUrl: relay.url(), autoPair: true, level: "control" });
+    const { link } = await device.createOffer(relay);
+    // Same relay, reached under a different URL (as a cloud bot reaches a LAN heart through a tunnel).
+    const reachable = `${relay.url().replace(/\/+$/, "")}/`;
+    expect(reachable).not.toBe(relay.url());
+    const client = await PhoneBridgeClient.open({ home, botName: "tunnel-bot" });
+    try {
+      const outcome = await client.pair(link, { relayUrl: reachable, requestedLevel: "control" });
+      expect(outcome.device.relayUrl).toBe(reachable);
+      expect(outcome.device.relayPin).toBeUndefined();
+      expect(client.devices()[0]?.relayUrl).toBe(reachable);
+      const status = (await client.status()) as Record<string, unknown>;
+      expect(status["device"]).toBe("Mock Pixel");
+    } finally {
+      await client.close();
+      await device.stop();
+      await relay.close();
+    }
+  });
   it("correlates responses to requests even when they arrive out of order", async () => {
     const { client, device } = (setupResult = await setup());
     device.handlers.set("status", async () => {

@@ -839,3 +839,9 @@ Task: Android AccessibilityService + command executor (`android/` only), branch
   `settings.gradle.kts` only when an SDK is found; until then write the Android code and keep
   JVM-testable logic in plain Kotlin classes with JVM unit tests.
 - No GitHub remote yet (gh not logged in). Push steps are skipped until `origin` exists.
+
+## 2026-11-24: phone start crash and desktop Pair tab (3ab81ca, 23e83f0)
+- Android: "PhoneBridge keeps stopping" on a Nothing Phone (3), Android 16 / targetSdk 36. BridgeService.onCreate called startForeground() with no type, so Android used every manifest type, including mediaProjection. That needs screen-capture consent first, so it threw a SecurityException. The service now starts as specialUse only and adds mediaProjection just before getMediaProjection(). The connectedDevice type was dropped because it needs runtime permissions the app does not hold.
+- Android: CrashReporter saves the last uncaught crash to filesDir/last_crash.txt. The "Last crash" screen (CrashActivity) opens once after a crash and has Copy and Clear buttons. The home screen also has a restricted-settings hint and an Open App info button.
+- Desktop: on the Pair tab, the approval table in BorderLayout.SOUTH asked for its default 400px height and squeezed out the QR, link and buttons. The layout is now PairingTabLayout: the table is 4 rows, the centre scrolls, and the buttons sit in a 2x2 grid. A code is made automatically when the tab opens and renewed when it expires while the tab is showing. PairingTabLayoutTest checks this at 830x400, 814x396 and 670x300.
+- Over ADB, a force-stop clears enabled_accessibility_services on this phone. Re-add the service after any force-stop.

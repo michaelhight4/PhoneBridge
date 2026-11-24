@@ -29,6 +29,9 @@ data class BotRecord(
     val level: PermissionLevel = PermissionLevel.CONTROL,
     /** The user's on/off switch for this bot; a disabled bot cannot start a session. */
     val enabled: Boolean = true,
+    /** The user's bot-to-bot messaging switch; defaults on so older registry files keep working. */
+    @SerialName("can_message")
+    val canMessage: Boolean = true,
     @SerialName("paired_at")
     val pairedAt: Long = 0,
     @SerialName("last_seen")
@@ -66,6 +69,9 @@ interface BotRegistry {
     fun setLevel(botId: String, level: PermissionLevel): Boolean =
         get(botId)?.let { put(it.copy(level = level)); true } ?: false
 
+    fun setCanMessage(botId: String, canMessage: Boolean): Boolean =
+        get(botId)?.let { put(it.copy(canMessage = canMessage)); true } ?: false
+
     fun setName(botId: String, name: String): Boolean =
         get(botId)?.let { put(it.copy(name = name)); true } ?: false
 
@@ -75,6 +81,9 @@ interface BotRegistry {
 
     /** True when the bot is paired and its on/off switch is on. */
     fun isEnabled(botId: String): Boolean = get(botId)?.enabled == true
+
+    /** True only when the bot is paired, switched on and allowed to send/receive bot messages. */
+    fun canMessage(botId: String): Boolean = get(botId)?.let { it.enabled && it.canMessage } ?: false
 }
 
 /** Process-lifetime registry, used by tests and by the bot-side tools. */

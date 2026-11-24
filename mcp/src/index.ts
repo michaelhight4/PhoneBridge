@@ -8,7 +8,37 @@
  * const status = await client.status();
  * ```
  */
-export { PhoneBridgeClient, type ClientOptions, type PairOptions, type PairOutcome } from "./client/client.js";
+export {
+  PhoneBridgeClient,
+  type BotPeer,
+  type ClientOptions,
+  type DecryptedBotMessage,
+  type ListPeersOptions,
+  type PairOptions,
+  type PairOutcome,
+  type ReadInboxOptions,
+  type ReplyOptions,
+  type SendMessageOptions,
+  type SentBotMessage,
+} from "./client/client.js";
+export {
+  BOT_MESSAGE_VERSION,
+  BOT_MSG_AAD_PREFIX,
+  BOT_MSG_HEADER_BYTES,
+  BOT_MSG_KEY_INFO_TEXT,
+  BOT_MSG_SALT_TEXT,
+  openBotMessage,
+  sealBotMessage,
+  type BotMessagePlaintext,
+  type BotMessageRandom,
+} from "./client/botMessageCrypto.js";
+export {
+  InboxStateStore,
+  MAX_RECENT_INBOX_MESSAGES,
+  inboxStatePath,
+  type InboxStateData,
+  type InboxStateMessage,
+} from "./client/inboxState.js";
 export {
   DeviceSession,
   targetFromStored,
@@ -72,7 +102,14 @@ export {
   openPairingPayload,
   sealPairingPayload,
 } from "./client/pairingCrypto.js";
-export { RelayConnection, decodePin, type Envelope, type RelayInfo } from "./client/relay.js";
+export {
+  RelayConnection,
+  decodePin,
+  type Envelope,
+  type RelayBotMessage,
+  type RelayInfo,
+  type RelayPeerEntry,
+} from "./client/relay.js";
 export { PhoneBridgeError, isPhoneBridgeError, type PhoneBridgeErrorCode } from "./client/errors.js";
 export {
   COMMAND_LEVELS,

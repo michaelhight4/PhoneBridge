@@ -13,6 +13,7 @@ data class BotRow(
     val lastSeen: Long,
     val lastSeenText: String,
     val enabled: Boolean,
+    val canMessage: Boolean = true,
     val level: PermissionLevel,
     val connected: Boolean,
     val inControl: Boolean,
@@ -46,6 +47,7 @@ class BotListController(
                 lastSeen = record.lastSeen,
                 lastSeenText = lastSeenText(record.lastSeen, now),
                 enabled = record.enabled,
+                canMessage = record.canMessage,
                 level = record.level,
                 connected = sessions.isConnected(record.botId),
                 inControl = sessions.isController(record.botId),
@@ -68,6 +70,21 @@ class BotListController(
             if (enabled) "bot_enabled" else "bot_disabled",
             true,
             message = if (enabled) "Allowed to connect again" else "Switched off; its live session was closed",
+        )
+        return true
+    }
+
+    /** Allows or refuses this bot's store-and-forward messages to other paired bots. */
+    fun setCanMessage(botId: String, canMessage: Boolean): Boolean {
+        val record = registry.get(botId) ?: return false
+        if (record.canMessage == canMessage) return true
+        if (!registry.setCanMessage(botId, canMessage)) return false
+        log.record(
+            botId,
+            record.name,
+            if (canMessage) "bot_msg_enabled" else "bot_msg_disabled",
+            true,
+            message = if (canMessage) "Allowed to message other bots" else "Bot messaging turned off",
         )
         return true
     }

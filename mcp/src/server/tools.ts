@@ -14,6 +14,9 @@ import { fromBase64Loose, toBase64Std, toBase64Url } from "../client/bytes.js";
 export const TOOL_NAMES = [
   "pb_pair",
   "pb_devices",
+  "pb_list_peers",
+  "pb_send_message",
+  "pb_read_inbox",
   "pb_status",
   "pb_screenshot",
   "pb_ui_tree",
@@ -147,6 +150,84 @@ export function registerPhoneBridgeTools(server: McpServer, context: ToolContext
           bot: { peer_id: client.botPeerId, fingerprint: client.botFingerprint },
           devices: client.devices(),
         });
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "pb_list_peers",
+    {
+      title: "List bot peers",
+      description:
+        "Lists the other bots this bot may message, as allowed by the paired device's relay ACL.",
+      inputSchema: { device: deviceArg },
+    },
+    async (args) => {
+      try {
+        const peers = await client.listPeers({
+          ...(device(args.device) === undefined ? {} : { device: device(args.device) as string }),
+        });
+        return json({ ok: true, peers });
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "pb_send_message",
+    {
+      title: "Send a bot message",
+      description:
+        "Sends an end-to-end encrypted, store-and-forward message to another bot. The recipient can " +
+        "be offline; the relay keeps it until the inbox is read.",
+      inputSchema: {
+        to: z.string().min(1).describe("Peer id, peer id prefix, name or fingerprint of the recipient bot."),
+        text: z.string().describe("Message text."),
+        reply_to: z.string().optional().describe("Id of the message this replies to."),
+        device: deviceArg,
+      },
+    },
+    async (args) => {
+      try {
+        const message = await client.sendMessage(args.to, args.text, {
+          ...(args.reply_to === undefined ? {} : { replyTo: args.reply_to }),
+          ...(device(args.device) === undefined ? {} : { device: device(args.device) as string }),
+        });
+        return json({ ok: true, message });
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "pb_read_inbox",
+    {
+      title: "Read bot inbox",
+      description:
+        "Decrypts messages waiting for this bot. By default messages are consumed; pass keep=true " +
+        "to leave them in the relay mailbox. With wait=true, polls for a live message up to timeout_ms.",
+      inputSchema: {
+        wait: z.boolean().optional().describe("Wait for a live message when the mailbox is empty."),
+        timeout_ms: z.number().int().min(1).optional().describe("Relay/wait timeout in milliseconds."),
+        limit: z.number().int().min(1).optional().describe("Maximum number of messages to read."),
+        keep: z.boolean().optional().describe("Keep messages in the relay mailbox after reading."),
+        device: deviceArg,
+      },
+    },
+    async (args) => {
+      try {
+        const messages = await client.readInbox({
+          ...(args.wait === undefined ? {} : { wait: args.wait }),
+          ...(args.timeout_ms === undefined ? {} : { timeoutMs: args.timeout_ms }),
+          ...(args.limit === undefined ? {} : { limit: args.limit }),
+          ...(args.keep === undefined ? {} : { keep: args.keep }),
+          ...(device(args.device) === undefined ? {} : { device: device(args.device) as string }),
+        });
+        return json({ ok: true, messages });
       } catch (error) {
         return failure(error);
       }

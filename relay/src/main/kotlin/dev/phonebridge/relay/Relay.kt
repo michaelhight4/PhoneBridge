@@ -8,6 +8,7 @@ import dev.phonebridge.core.crypto.X25519
 import dev.phonebridge.core.crypto.X25519KeyPair
 import dev.phonebridge.core.identity.PeerIds
 import dev.phonebridge.core.model.EnvelopeCodec
+import dev.phonebridge.core.model.PeerRole
 import dev.phonebridge.core.model.RelayEnvelope
 import dev.phonebridge.core.model.RelayLimits
 import dev.phonebridge.core.model.RelayType
@@ -92,6 +93,14 @@ internal class RelayServer private constructor(
 
     private val peers = ConcurrentHashMap<String, Session>()
     private val mailbox = PairMailbox(config.pairMailboxTtlMs)
+    private val botMailbox = BotMailbox(
+        dataDir = config.dataDir,
+        maxBotMessageBytes = config.maxBotMessageBytes,
+        maxMailboxMessagesPerBot = config.maxMailboxMessagesPerBot,
+        maxMailboxBytesPerBot = config.maxMailboxBytesPerBot,
+        maxTotalMailboxMessages = config.maxTotalMailboxMessages,
+        botMessageTtlMs = config.botMessageTtlMs,
+    )
     private val usedMoveTokens = ConcurrentHashMap<String, Long>()
 
     private val envelopesRouted = AtomicLong()
@@ -203,6 +212,7 @@ internal class RelayServer private constructor(
         private val nonce = Primitives.randomBytes(32)
         private val nonceB64 = B64Url.encode(nonce)
         private var limiter = RateLimiter(config.rateLimit)
+        private val botLimiter = RateLimiter(config.botMessageRateLimit)
 
         @Volatile
         var peerId: String? = null
@@ -299,6 +309,31 @@ internal class RelayServer private constructor(
                 }
                 RelayType.PAIR_LOOKUP -> {
                     handlePairLookup(envelope)
+                    true
+                }
+                RelayType.PEERS_SYNC -> {
+                    handlePeersSync(envelope)
+                    true
+                }
+                RelayType.PEERS_LIST -> {
+                    handlePeersList(envelope)
+                    true
+                }
+                RelayType.MSG_SEND -> {
+                    if (!botLimiter.tryAcquire()) {
+                        rateLimited.incrementAndGet()
+                        maybeSendRateLimited()
+                    } else {
+                        handleMsgSend(envelope)
+                    }
+                    true
+                }
+                RelayType.MSG_INBOX -> {
+                    handleMsgInbox(envelope)
+                    true
+                }
+                RelayType.MSG_ACK -> {
+                    handleMsgAck(envelope)
                     true
                 }
                 else -> {
@@ -492,6 +527,124 @@ internal class RelayServer private constructor(
             }
         }
 
+        private fun handlePeersSync(envelope: RelayEnvelope) {
+            if (role != PeerRole.DEVICE.wire) {
+                sendError("unauthorized", "only devices may sync bot peers", envelope.id)
+                return
+            }
+            val sender = peerId ?: return
+            val count = botMailbox.syncDevicePeers(
+                deviceId = sender,
+                deviceName = envelope.deviceName,
+                peers = envelope.peers.orEmpty(),
+            )
+            send(RelayEnvelope.peersSynced(to = sender, count = count, id = envelope.id ?: RelayEnvelope.newId()))
+        }
+
+        private fun handlePeersList(envelope: RelayEnvelope) {
+            val sender = peerId ?: return
+            when (val result = botMailbox.listPeersForBot(
+                botId = sender,
+                deviceId = envelope.deviceId,
+                isOnline = ::isBotOnline,
+            )) {
+                is BotMailbox.PeersResult.Allowed -> send(
+                    RelayEnvelope.peersResult(
+                        to = sender,
+                        peers = result.peers,
+                        deviceId = envelope.deviceId,
+                        id = envelope.id ?: RelayEnvelope.newId(),
+                    ),
+                )
+
+                is BotMailbox.PeersResult.Denied ->
+                    sendError("permission_denied", result.reason, envelope.id)
+            }
+        }
+
+        private fun handleMsgSend(envelope: RelayEnvelope) {
+            val sender = peerId ?: return
+            val incoming = envelope.message
+            if (incoming == null) {
+                sendError("bad_args", "msg_send needs a message", envelope.id)
+                return
+            }
+            if (incoming.id.isBlank()) {
+                sendError("bad_args", "msg_send needs a message id", envelope.id)
+                return
+            }
+            if (incoming.from != sender || (envelope.from != null && envelope.from != sender)) {
+                sendError("unauthorized", "msg_send must come from the authenticated bot", envelope.id)
+                return
+            }
+            val payloadBytes = try {
+                B64Url.decode(incoming.payload).size
+            } catch (_: IllegalArgumentException) {
+                sendError("bad_args", "bot message payload is not base64url", envelope.id)
+                return
+            }
+            if (payloadBytes > config.maxBotMessageBytes) {
+                sendError("too_large", "bot message exceeds ${config.maxBotMessageBytes} bytes", envelope.id)
+                return
+            }
+            if (!botMailbox.authorizeSend(sender, incoming.to, envelope.deviceId)) {
+                sendError("permission_denied", "these bots may not message each other", envelope.id)
+                return
+            }
+            val stored = try {
+                botMailbox.enqueue(
+                    incoming.copy(from = sender, deviceId = envelope.deviceId ?: incoming.deviceId),
+                )
+            } catch (e: BotMailbox.MailboxFullException) {
+                sendError("mailbox_full", e.message ?: "the bot mailbox is full", envelope.id)
+                return
+            }
+            send(
+                RelayEnvelope.msgSent(
+                    to = sender,
+                    message = stored,
+                    id = envelope.id ?: RelayEnvelope.newId(),
+                ),
+            )
+            // Deliver immediately when the recipient is connected; otherwise it reads the mailbox later.
+            peers[stored.to]?.send(
+                RelayEnvelope.msgDeliver(to = stored.to, message = stored),
+            )
+        }
+
+        private fun handleMsgInbox(envelope: RelayEnvelope) {
+            val sender = peerId ?: return
+            val limit = (envelope.limit ?: DEFAULT_INBOX_LIMIT).coerceIn(1, config.maxMailboxMessagesPerBot)
+            val messages = botMailbox.readInbox(
+                botId = sender,
+                limit = limit,
+                consume = envelope.consume ?: false,
+                ackIds = envelope.ackIds.orEmpty(),
+            )
+            send(
+                RelayEnvelope.msgList(
+                    to = sender,
+                    messages = messages,
+                    id = envelope.id ?: RelayEnvelope.newId(),
+                ),
+            )
+        }
+
+        private fun handleMsgAck(envelope: RelayEnvelope) {
+            val sender = peerId ?: return
+            val ackedIds = botMailbox.ack(sender, envelope.ids.orEmpty())
+            send(
+                RelayEnvelope.msgAcked(
+                    to = sender,
+                    ackIds = ackedIds,
+                    count = ackedIds.size,
+                    id = envelope.id ?: RelayEnvelope.newId(),
+                ),
+            )
+        }
+
+        private fun isBotOnline(botId: String): Boolean = peers.containsKey(botId)
+
         private fun sendPong(request: RelayEnvelope) {
             send(
                 RelayEnvelope(
@@ -539,6 +692,7 @@ internal class RelayServer private constructor(
     companion object {
         private const val REPLACED_CLOSE_CODE = 4001
         private const val CLOSE_POLICY_VIOLATION = 1008
+        private const val DEFAULT_INBOX_LIMIT = 50
 
         /** Canonical mailbox key for a short code, or null when it is not six Crockford symbols. */
         internal fun canonicalCode(raw: String): String? {

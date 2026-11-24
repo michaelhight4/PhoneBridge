@@ -78,7 +78,10 @@ class MainWindow(
     private val levelCombo = JComboBox(arrayOf("view", "control", "full"))
     private var pending: List<PendingApproval> = emptyList()
 
-    private val botsModel = DefaultTableModel(arrayOf("Bot", "Fingerprint", "Level", "On", "Last seen"), 0)
+    private val botsModel = DefaultTableModel(
+        arrayOf("Bot", "Fingerprint", "Level", "On", "Messaging", "Last seen"),
+        0,
+    )
     private val botsTable = JTable(botsModel)
     private var bots: List<BotRecord> = emptyList()
 
@@ -249,6 +252,7 @@ class MainWindow(
 
         val buttons = JPanel(FlowLayout(FlowLayout.LEFT, 6, 6))
         buttons.add(JButton("Turn on / off").apply { addActionListener { toggleSelectedBot() } })
+        buttons.add(JButton("Toggle messaging").apply { addActionListener { toggleMessaging() } })
         buttons.add(JButton("Change level").apply { addActionListener { changeSelectedLevel() } })
         buttons.add(JButton("Unpair").apply { addActionListener { unpairSelected() } })
         buttons.add(JButton("Kick everyone").apply { addActionListener { kickEveryone() } })
@@ -412,6 +416,12 @@ class MainWindow(
         reloadBots()
     }
 
+    private fun toggleMessaging() {
+        val bot = selectedBot() ?: return
+        bridge.setCanMessage(bot.botId, !bot.canMessage)
+        reloadBots()
+    }
+
     private fun changeSelectedLevel() {
         val bot = selectedBot() ?: return
         val levels = arrayOf("view", "control", "full")
@@ -544,6 +554,7 @@ class MainWindow(
                     bot.fingerprint,
                     bot.level.wire,
                     if (bot.enabled) "on" else "off",
+                    if (bot.canMessage) "on" else "off",
                     if (bot.lastSeen > 0) stamp.format(Instant.ofEpochMilli(bot.lastSeen)) else "never",
                 ),
             )

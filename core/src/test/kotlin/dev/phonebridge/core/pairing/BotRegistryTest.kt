@@ -143,6 +143,54 @@ class BotRegistryTest {
     }
 
     @Test
+    fun messagingSwitchDefaultsOnAndSurvivesAFileReload() {
+        val dir = Files.createTempDirectory("pb-registry-messaging")
+        try {
+            val file = dir.resolve("bots.v1.json")
+            val registry = JsonFileBotRegistry(file)
+            val bot = record("messenger")
+            registry.put(bot)
+
+            assertTrue(bot.canMessage)
+            assertTrue(registry.canMessage(bot.botId))
+            assertTrue(registry.setCanMessage(bot.botId, false))
+            assertFalse(registry.canMessage(bot.botId))
+            assertTrue(registry.setEnabled(bot.botId, false))
+            assertFalse(registry.canMessage(bot.botId))
+
+            // Turning the bot back on must not silently re-enable messaging.
+            assertTrue(registry.setEnabled(bot.botId, true))
+            assertFalse(registry.canMessage(bot.botId))
+            assertFalse(registry.setCanMessage("not-paired", true))
+
+            val reloaded = JsonFileBotRegistry(file)
+            assertFalse(reloaded.get(bot.botId)!!.canMessage)
+            assertFalse(reloaded.canMessage(bot.botId))
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun registryFilesWrittenBeforeMessagingExistedStillLoad() {
+        val bot = record("legacy")
+        val legacy = """
+            {"v":1,"bots":[{"bot_id":"${bot.botId}","name":"${bot.name}","public_key":"${bot.publicKey}",
+            "level":"control","enabled":true,"paired_at":1,"last_seen":0}]}
+        """.trimIndent()
+        val dir = Files.createTempDirectory("pb-registry-legacy")
+        try {
+            val file = dir.resolve("bots.v1.json")
+            Files.writeString(file, legacy)
+            val registry = JsonFileBotRegistry(file)
+            assertTrue(registry.get(bot.botId)!!.canMessage)
+            assertTrue(registry.canMessage(bot.botId))
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun fingerprintsComeFromTheStoredKey() {
         val identity = Identity.generate(PeerRole.BOT, "bot")
         val record = BotRecord(identity.peerId, "bot", identity.publicKeyBase64)

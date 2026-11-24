@@ -15,6 +15,7 @@ import { PhoneBridgeError, isPhoneBridgeError } from "../client/errors.js";
 import { fromBase64Loose, toBase64Url } from "../client/bytes.js";
 import { normalizeLevel, type PermissionLevel } from "../client/levels.js";
 import { PERMISSION_LEVELS } from "../client/keystore.js";
+import { InboxStateStore } from "../client/inboxState.js";
 import { VERSION } from "../server/version.js";
 
 export interface CliIo {
@@ -44,12 +45,17 @@ const VALUE_FLAGS = new Set([
   "--output",
   "-o",
   "--bot-name",
+  "--reply-to",
+  "--limit",
+  "--to",
 ]);
 
 const BOOLEAN_FLAGS = new Set([
   "--json",
   "--visible-only",
   "--insecure-dev",
+  "--wait",
+  "--keep",
   "--help",
   "-h",
   "--version",
@@ -120,6 +126,10 @@ Usage: phonebridge [options] <command> [args]
 Commands:
   pair <code|link|file>                 Pair with a phone (short code, phonebridge:// link, .pbpair)
   devices                               List paired devices
+  peers                                 List the bots this bot may message
+  send <peer> <text…>                   Send an encrypted bot message
+  inbox [--wait] [--keep] [--limit N]   Read bot messages
+  reply [peer|msg_id] <text…>           Reply to a bot or the latest cached message
   status                                Device status (battery, screen, controller)
   screenshot [-o FILE]                  Save a screenshot (default: base64 on stdout)
   ui-tree                               Accessibility tree of the current screen
@@ -145,6 +155,11 @@ Options:
       --level <lvl>      Requested level when pairing: view|control|full
       --name <name>      Bot name shown on the phone
       --timeout <ms>     Request timeout
+      --reply-to <id>    Mark a bot message as a reply
+      --to <peer>        Reply to this bot instead of the cached sender
+      --limit <n>        Maximum number of inbox messages
+      --wait             Wait for a live bot message
+      --keep             Do not consume inbox messages
       --json             Print raw JSON (default for most commands)
       --insecure-dev     Allow plain ws:// relays
   -h, --help             Show this help
@@ -231,6 +246,76 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
             2,
           )}\n`,
         );
+        return 0;
+      }
+      case "peers": {
+        const peers = await client.listPeers({
+          ...(device === undefined ? {} : { device }),
+          ...(relayOverride(flags) === undefined ? {} : { relayUrl: relayOverride(flags) }),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        });
+        io.out(`${JSON.stringify({ ok: true, peers }, null, 2)}\n`);
+        return 0;
+      }
+      case "send": {
+        const [peer, ...textParts] = parsed.positionals;
+        if (peer === undefined || textParts.length === 0) {
+          throw new PhoneBridgeError("bad_input", "usage: phonebridge send <peer> <text…>");
+        }
+        const message = await client.sendMessage(peer, textParts.join(" "), {
+          ...(stringFlag(flags, "--reply-to") === undefined
+            ? {}
+            : { replyTo: stringFlag(flags, "--reply-to") as string }),
+          ...(device === undefined ? {} : { device }),
+          ...(relayOverride(flags) === undefined ? {} : { relayUrl: relayOverride(flags) }),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        });
+        io.out(`${JSON.stringify({ ok: true, message }, null, 2)}\n`);
+        return 0;
+      }
+      case "inbox": {
+        const messages = await client.readInbox({
+          ...(flags.has("--wait") ? { wait: true } : {}),
+          ...(flags.has("--keep") ? { keep: true } : {}),
+          ...(numberFlag(flags, "--limit") === undefined ? {} : { limit: numberFlag(flags, "--limit") }),
+          ...(device === undefined ? {} : { device }),
+          ...(relayOverride(flags) === undefined ? {} : { relayUrl: relayOverride(flags) }),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        });
+        io.out(`${JSON.stringify({ ok: true, messages }, null, 2)}\n`);
+        return 0;
+      }
+      case "reply": {
+        const explicitTo = stringFlag(flags, "--to");
+        const replyTo = stringFlag(flags, "--reply-to");
+        const positionals = parsed.positionals;
+        if (explicitTo === undefined && positionals.length === 0) {
+          throw new PhoneBridgeError(
+            "bad_input",
+            "usage: phonebridge reply [peer|msg_id] <text…> | --to <peer> <text…>",
+          );
+        }
+        let target: string | undefined = explicitTo;
+        let text = positionals.join(" ");
+        if (explicitTo === undefined && positionals.length >= 2) {
+          const first = positionals[0] as string;
+          const cached = (await InboxStateStore.open({ home })).findById(first);
+          const isPeer =
+            cached === undefined &&
+            (await matchesBotPeer(client, first, device, relayOverride(flags), timeoutMs));
+          if (cached !== undefined || isPeer) {
+            target = first;
+            text = positionals.slice(1).join(" ");
+          }
+        }
+        const message = await client.reply(text, {
+          ...(target === undefined ? {} : { target }),
+          ...(replyTo === undefined ? {} : { replyTo }),
+          ...(device === undefined ? {} : { device }),
+          ...(relayOverride(flags) === undefined ? {} : { relayUrl: relayOverride(flags) }),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        });
+        io.out(`${JSON.stringify({ ok: true, message }, null, 2)}\n`);
         return 0;
       }
       case "status":
@@ -508,6 +593,39 @@ function requestOptions(device: string | undefined, timeoutMs: number | undefine
     ...(device === undefined ? {} : { device }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   };
+}
+
+function relayOverride(flags: Map<string, string | true>): string | undefined {
+  return stringFlag(flags, "--relay") ?? stringFlag(flags, "-r");
+}
+
+async function matchesBotPeer(
+  client: PhoneBridgeClient,
+  ref: string,
+  device: string | undefined,
+  relayUrl: string | undefined,
+  timeoutMs: number | undefined,
+): Promise<boolean> {
+  try {
+    const peers = await client.listPeers({
+      ...(device === undefined ? {} : { device }),
+      ...(relayUrl === undefined ? {} : { relayUrl }),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    });
+    const wanted = ref.trim().toLowerCase();
+    const fingerprint = ref.replace(/[^0-9a-zA-Z]/g, "").toLowerCase();
+    return peers.some((peer) => {
+      if (peer.peerId === wanted) return true;
+      if (wanted.length >= 6 && peer.peerId.startsWith(wanted)) return true;
+      if (peer.name.toLowerCase() === wanted) return true;
+      return (
+        fingerprint.length >= 8 &&
+        peer.fingerprint.replace(/[^0-9a-zA-Z]/g, "").toLowerCase() === fingerprint
+      );
+    });
+  } catch {
+    return false;
+  }
 }
 
 function stringFlag(flags: Map<string, string | true>, name: string): string | undefined {

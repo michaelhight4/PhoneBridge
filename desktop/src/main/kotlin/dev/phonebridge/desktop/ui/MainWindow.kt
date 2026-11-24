@@ -15,7 +15,6 @@ import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
-import java.awt.GridLayout
 import java.awt.Insets
 import java.awt.event.KeyEvent
 import java.awt.event.WindowAdapter
@@ -119,6 +118,7 @@ class MainWindow(
             frame.isVisible = true
             frame.toFront()
             refreshPanels()
+            if (pairingTabShowing()) ensureOffer()
         }
     }
 
@@ -132,6 +132,7 @@ class MainWindow(
             if (index in 0 until tabs.tabCount) tabs.selectedIndex = index
             frame.isVisible = true
             frame.toFront()
+            if (pairingTabShowing()) ensureOffer()
         }
     }
 
@@ -152,6 +153,7 @@ class MainWindow(
         tabs.addTab("Bots", botsTab())
         tabs.addTab("Activity log", activityTab())
         tabs.addTab("Relay", relayTab())
+        tabs.addChangeListener { if (pairingTabShowing()) ensureOffer() }
         root.add(tabs, BorderLayout.CENTER)
         return root
     }
@@ -210,68 +212,34 @@ class MainWindow(
     }
 
     private fun pairingTab(): JComponent {
-        val panel = JPanel(BorderLayout(12, 12))
-        panel.border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
-
-        codeLabel.font = codeLabel.font.deriveFont(Font.BOLD, 34f)
-        countdownLabel.font = countdownLabel.font.deriveFont(Font.PLAIN, 12f)
-        pairingMessage.font = pairingMessage.font.deriveFont(Font.PLAIN, 12f)
-        linkField.isEditable = false
-        linkField.columns = 28
-
-        val top = JPanel()
-        top.layout = BoxLayout(top, BoxLayout.Y_AXIS)
-        top.add(codeLabel)
-        top.add(countdownLabel)
-        top.add(Box.createVerticalStrut(6))
-        top.add(pairingMessage)
-
-        val qrPanel = JPanel(BorderLayout())
-        qrPanel.border = BorderFactory.createTitledBorder("Scan with the bot's phone")
-        qrLabel.horizontalAlignment = JLabel.CENTER
-        qrLabel.verticalAlignment = JLabel.CENTER
-        qrLabel.preferredSize = Dimension(260, 260)
-        qrPanel.add(qrLabel, BorderLayout.CENTER)
-
-        val right = JPanel()
-        right.layout = BoxLayout(right, BoxLayout.Y_AXIS)
-        right.border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
-        right.add(JLabel("Short code (type it into the bot)"))
-        right.add(Box.createVerticalStrut(4))
-        right.add(linkField)
-        right.add(Box.createVerticalStrut(8))
-        val row = JPanel(FlowLayout(FlowLayout.LEFT, 6, 6))
-        row.add(JButton("New code").apply { addActionListener { newOffer() } })
-        row.add(JButton("Copy link").apply { addActionListener { copyLink() } })
-        row.add(JButton("Save .pbpair file").apply { addActionListener { savePairingFile() } })
-        row.add(JButton("Cancel code").apply { addActionListener { cancelOffer() } })
-        right.add(row)
-        right.add(Box.createVerticalStrut(12))
-        right.add(JLabel("A bot that paired shows up in Bots. Approve it below when it asks."))
-
-        val center = JPanel(GridLayout(1, 2, 12, 0))
-        center.add(qrPanel)
-        center.add(right)
-
-        val pendingPanel = JPanel(BorderLayout(8, 8))
-        pendingPanel.border = BorderFactory.createTitledBorder("Allow this bot?")
         pendingTable.selectionModel.addListSelectionListener {
             if (!it.valueIsAdjusting) syncPendingLevel()
         }
-        pendingPanel.add(JScrollPane(pendingTable), BorderLayout.CENTER)
-
-        val decision = JPanel(FlowLayout(FlowLayout.LEFT, 6, 6))
-        decision.add(JLabel("Level"))
-        decision.add(levelCombo)
-        decision.add(JButton("Allow").apply { addActionListener { approveSelected() } })
-        decision.add(JButton("Deny").apply { addActionListener { denySelected() } })
-        pendingPanel.add(decision, BorderLayout.SOUTH)
-
-        panel.add(top, BorderLayout.NORTH)
-        panel.add(center, BorderLayout.CENTER)
-        panel.add(pendingPanel, BorderLayout.SOUTH)
-        return panel
+        return PairingTabLayout.build(
+            codeLabel = codeLabel,
+            countdownLabel = countdownLabel,
+            pairingMessage = pairingMessage,
+            qrLabel = qrLabel,
+            linkField = linkField,
+            pendingTable = pendingTable,
+            levelCombo = levelCombo,
+            actions = PairingTabLayout.Actions(
+                newCode = ::newOffer,
+                copyLink = ::copyLink,
+                saveFile = ::savePairingFile,
+                cancelCode = ::cancelOffer,
+                allow = ::approveSelected,
+                deny = ::denySelected,
+            ),
+        )
     }
+
+    /** Opening the pairing tab always shows a live code, so "No code" is never a dead end. */
+    private fun ensureOffer() {
+        if (currentOffer == null) newOffer()
+    }
+
+    private fun pairingTabShowing(): Boolean = frame.isVisible && tabs.selectedIndex == PAIRING_TAB
 
     private fun botsTab(): JComponent {
         val panel = JPanel(BorderLayout(8, 8))
@@ -370,7 +338,7 @@ class MainWindow(
         currentOffer = offer
         codeLabel.text = offer.code
         linkField.text = bridge.pairingLink(offer)
-        qrLabel.icon = ImageIcon(QrCode.image(bridge.pairingLink(offer), 240))
+        qrLabel.icon = ImageIcon(QrCode.image(bridge.pairingLink(offer), PairingTabLayout.QR_SIZE - 12))
         pairingMessage.text = "The code is one-time and expires in ten minutes."
     }
 
@@ -520,7 +488,10 @@ class MainWindow(
         if (offer != null) {
             val remaining = ((offer.expiresAtMillis - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
             countdownLabel.text = if (remaining > 0) "Expires in ${remaining / 60}:${"%02d".format(remaining % 60)}" else "Expired"
-            if (remaining == 0L) clearOffer("The code expired. Make a new one.")
+            if (remaining == 0L) {
+                clearOffer("The code expired. Click New code for another one.")
+                if (pairingTabShowing()) newOffer()
+            }
         }
         reloadPending()
         reloadBots()
@@ -603,5 +574,9 @@ class MainWindow(
             val record = bots.firstOrNull { it.botId == id }
             "${record?.name ?: id} — ${record?.fingerprint ?: ""} (${record?.level?.wire ?: "?"})"
         }
+    }
+
+    private companion object {
+        const val PAIRING_TAB = 1
     }
 }

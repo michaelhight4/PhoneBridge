@@ -99,6 +99,8 @@ class DesktopBridge(
 
     init {
         envelopeSink.set { envelope -> sessions.onRoute(envelope) }
+        // A reconnect creates a fresh relay session, so the ACL has to be published again.
+        heartImpl.onConnected = { syncPeersToRelay() }
     }
 
     fun setSnapshotListener(listener: (DesktopSnapshot) -> Unit) {
@@ -189,8 +191,11 @@ class DesktopBridge(
         return target
     }
 
-    fun approve(pending: PendingApproval, level: PermissionLevel): Boolean =
-        sessions.approve(pending, level) != null
+    fun approve(pending: PendingApproval, level: PermissionLevel): Boolean {
+        val approved = sessions.approve(pending, level) != null
+        if (approved) syncPeersToRelay()
+        return approved
+    }
 
     fun deny(pending: PendingApproval): Boolean = sessions.deny(pending)
 
@@ -200,6 +205,7 @@ class DesktopBridge(
         activity.record(
             ActivityEntryFactory.make(ACTOR, desktopDevice.name, "unpair", true, detail = "bot $botId"),
         )
+        syncPeersToRelay()
         refreshSnapshot()
     }
 
@@ -215,6 +221,7 @@ class DesktopBridge(
                 detail = "bot $botId",
             ),
         )
+        syncPeersToRelay()
         refreshSnapshot()
     }
 
@@ -223,7 +230,25 @@ class DesktopBridge(
         activity.record(
             ActivityEntryFactory.make(ACTOR, desktopDevice.name, "bot_level", true, detail = "bot $botId -> ${level.wire}"),
         )
+        syncPeersToRelay()
         refreshSnapshot()
+    }
+
+    /** Allows or refuses this bot's store-and-forward messages to other paired bots. */
+    fun setCanMessage(botId: String, canMessage: Boolean): Boolean {
+        if (!registry.setCanMessage(botId, canMessage)) return false
+        activity.record(
+            ActivityEntryFactory.make(
+                ACTOR,
+                desktopDevice.name,
+                if (canMessage) "bot_msg_on" else "bot_msg_off",
+                true,
+                detail = "bot $botId",
+            ),
+        )
+        syncPeersToRelay()
+        refreshSnapshot()
+        return true
     }
 
     fun bots(): List<dev.phonebridge.core.pairing.BotRecord> = registry.list()
@@ -274,6 +299,10 @@ class DesktopBridge(
     fun relayStatusText(): String = heartController.statusText()
 
     // ------------------------------------------------------------------ internals
+
+    private fun syncPeersToRelay() {
+        heartImpl.syncPeers(deviceName(), registry.list())
+    }
 
     private fun relayMove(target: String): String? = when {
         target.equals("this", ignoreCase = true) -> {

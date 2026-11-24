@@ -6,9 +6,9 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import { fromBase64Loose, toBase64Url } from "../../src/client/bytes.js";
-import { generateKeyPair, peerIdForPublicKey, type KeyPair } from "../../src/client/crypto.js";
+import { generateKeyPair, fingerprintForPeerId, peerIdForPublicKey, type KeyPair } from "../../src/client/crypto.js";
 import { verifyHelloProof } from "../../src/client/helloAuth.js";
-import type { Envelope } from "../../src/client/relay.js";
+import type { Envelope, RelayBotMessage, RelayPeerEntry } from "../../src/client/relay.js";
 
 interface Peer {
   peerId: string;
@@ -24,11 +24,18 @@ interface OfferEntry {
   taken: boolean;
 }
 
+interface DevicePeers {
+  deviceId: string;
+  deviceName: string | undefined;
+  bots: RelayPeerEntry[];
+}
+
 interface ConnectionState {
   nonce: Uint8Array;
   keyPair: KeyPair;
   relayId: string;
   peerId: string | undefined;
+  role: string;
   authed: boolean;
 }
 
@@ -38,6 +45,8 @@ export class MockRelay {
   private offers = new Map<string, OfferEntry>();
   private connections = new Map<WebSocket, ConnectionState>();
   private peerWaiters: Array<{ predicate: (peer: Peer) => boolean; resolve: (peer: Peer) => void }> = [];
+  private devices = new Map<string, DevicePeers>();
+  private mailboxes = new Map<string, RelayBotMessage[]>();
 
   dropRoutes = false;
   routeCount = 0;
@@ -67,6 +76,29 @@ export class MockRelay {
 
   registerOffer(code: string, offer: Record<string, unknown>, expiresAtMs = Date.now() + 10 * 60_000): void {
     this.offers.set(code.toUpperCase(), { code: code.toUpperCase(), offer, expiresAt: expiresAtMs, taken: false });
+  }
+
+  /** Device-side `peers_sync`: publishes the bots a phone allows to message each other. */
+  syncPeers(deviceId: string, peers: RelayPeerEntry[], deviceName?: string): void {
+    this.devices.set(deviceId, {
+      deviceId,
+      deviceName,
+      bots: peers
+        .filter((entry) => entry.peer_id.trim() !== "" && entry.public_key.trim() !== "")
+        .map((entry) => ({
+          ...entry,
+          fingerprint: entry.fingerprint ?? fingerprintForPeerId(entry.peer_id),
+          device_id: deviceId,
+          device_name: deviceName,
+          online: undefined,
+        }))
+        .filter((entry, index, all) => all.findIndex((other) => other.peer_id === entry.peer_id) === index),
+    });
+  }
+
+  /** Remaining queued messages for a bot, for assertions about store-and-forward. */
+  mailbox(botId: string): RelayBotMessage[] {
+    return [...(this.mailboxes.get(botId) ?? [])];
   }
 
   connectedPeers(): string[] {
@@ -117,6 +149,8 @@ export class MockRelay {
     this.peers.clear();
     this.peerWaiters = [];
     this.connections.clear();
+    this.devices.clear();
+    this.mailboxes.clear();
     if (server === undefined) return;
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -139,6 +173,7 @@ export class MockRelay {
       keyPair,
       relayId: peerIdForPublicKey(keyPair.publicKey),
       peerId: undefined,
+      role: "bot",
       authed: false,
     };
     this.connections.set(socket, state);
@@ -288,6 +323,56 @@ export class MockRelay {
         );
         return;
       }
+      case "peers_sync": {
+        if (state.role !== "device") {
+          this.sendError(socket, "unauthorized", "only devices may sync bot peers", state.peerId, message.id);
+          return;
+        }
+        const count = message.peers === undefined ? 0 : this.syncPeersFromEnvelope(state, message);
+        this.send(socket, { type: "peers_synced", to: state.peerId, count, id: message.id ?? randomUUID() });
+        return;
+      }
+      case "peers_list": {
+        const allowed = this.allowedPeers(state.peerId ?? "", message.device_id);
+        if (allowed === undefined) {
+          this.sendError(
+            socket,
+            "permission_denied",
+            `bot ${state.peerId ?? ""} is not paired with messaging enabled`,
+            state.peerId,
+            message.id,
+          );
+          return;
+        }
+        this.send(socket, {
+          type: "peers_result",
+          to: state.peerId,
+          device_id: message.device_id,
+          peers: allowed,
+          count: allowed.length,
+          id: message.id ?? randomUUID(),
+        });
+        return;
+      }
+      case "msg_send": {
+        this.handleMsgSend(socket, state, message);
+        return;
+      }
+      case "msg_inbox": {
+        this.handleMsgInbox(socket, state, message);
+        return;
+      }
+      case "msg_ack": {
+        const acked = this.ackMessages(state.peerId ?? "", message.ids);
+        this.send(socket, {
+          type: "msg_acked",
+          to: state.peerId,
+          ack_ids: acked,
+          count: acked.length,
+          id: message.id ?? randomUUID(),
+        });
+        return;
+      }
       case "ping":
         socket.send(JSON.stringify({ v: 1, type: "pong", from: state.peerId, to: message.from, id: message.id }));
         return;
@@ -295,6 +380,205 @@ export class MockRelay {
         // Unknown types are ignored, never fatal.
         return;
     }
+  }
+
+  private send(socket: WebSocket, message: Record<string, unknown>): void {
+    socket.send(JSON.stringify({ v: 1, ...message }));
+  }
+
+  private sendError(
+    socket: WebSocket,
+    code: string,
+    text: string,
+    to?: string,
+    id?: string,
+  ): void {
+    this.send(socket, { type: "error", to, id, error: { code, message: text } });
+  }
+
+  private syncPeersFromEnvelope(state: ConnectionState, message: Envelope): number {
+    const peers = Array.isArray(message.peers) ? message.peers : [];
+    const deviceName = typeof message.device_name === "string" ? message.device_name : undefined;
+    this.syncPeers(state.peerId ?? "", peers, deviceName);
+    return this.devices.get(state.peerId ?? "")?.bots.length ?? 0;
+  }
+
+  private canMessage(entry: RelayPeerEntry, botId: string): boolean {
+    return entry.peer_id === botId && entry.enabled !== false && entry.can_message !== false;
+  }
+
+  /** Mirrors `BotMailbox.listPeersForBot`: denied unless the asking bot is itself paired with ACL. */
+  private allowedPeers(botId: string, deviceId?: string): RelayPeerEntry[] | undefined {
+    const devices = [...this.devices.values()].filter(
+      (device) =>
+        (deviceId === undefined || device.deviceId === deviceId) &&
+        device.bots.some((entry) => this.canMessage(entry, botId)),
+    );
+    if (devices.length === 0) return undefined;
+    const seen = new Set<string>();
+    const peers: RelayPeerEntry[] = [];
+    for (const device of devices) {
+      for (const entry of device.bots) {
+        if (entry.peer_id === botId || entry.enabled === false || seen.has(entry.peer_id)) continue;
+        seen.add(entry.peer_id);
+        peers.push({
+          ...entry,
+          device_id: device.deviceId,
+          device_name: device.deviceName,
+          online: this.peers.has(entry.peer_id),
+        });
+      }
+    }
+    return peers;
+  }
+
+  private authorizeSend(fromBotId: string, toBotId: string, deviceId?: string): boolean {
+    if (fromBotId === toBotId) return false;
+    return [...this.devices.values()].some(
+      (device) =>
+        (deviceId === undefined || device.deviceId === deviceId) &&
+        device.bots.some((entry) => this.canMessage(entry, fromBotId)) &&
+        device.bots.some((entry) => this.canMessage(entry, toBotId)),
+    );
+  }
+
+  private parseBotMessage(value: unknown): RelayBotMessage {
+    if (typeof value !== "object" || value === null) throw new Error("msg_send needs a message");
+    const record = value as Record<string, unknown>;
+    const createdAt = record["created_at"];
+    if (
+      typeof record["id"] !== "string" ||
+      typeof record["from"] !== "string" ||
+      typeof record["to"] !== "string" ||
+      typeof record["payload"] !== "string" ||
+      typeof createdAt !== "number" ||
+      !Number.isFinite(createdAt)
+    ) {
+      throw new Error("malformed bot message");
+    }
+    return {
+      id: record["id"],
+      from: record["from"],
+      to: record["to"],
+      created_at: createdAt,
+      payload: record["payload"],
+      ...(typeof record["from_name"] === "string" ? { from_name: record["from_name"] } : {}),
+      ...(typeof record["device_id"] === "string" ? { device_id: record["device_id"] } : {}),
+      ...(typeof record["expires_at"] === "number" ? { expires_at: record["expires_at"] } : {}),
+    };
+  }
+
+  private handleMsgSend(socket: WebSocket, state: ConnectionState, message: Envelope): void {
+    let incoming: RelayBotMessage;
+    try {
+      incoming = this.parseBotMessage(message.message);
+    } catch {
+      this.sendError(socket, "bad_args", "msg_send needs a well-formed message", state.peerId, message.id);
+      return;
+    }
+    if (incoming.from !== state.peerId || (message.from !== undefined && message.from !== state.peerId)) {
+      this.sendError(socket, "unauthorized", "msg_send must come from the authenticated bot", state.peerId, message.id);
+      return;
+    }
+    let payloadBytes: number;
+    try {
+      payloadBytes = fromBase64Loose(incoming.payload).length;
+    } catch {
+      this.sendError(socket, "bad_args", "bot message payload is not base64url", state.peerId, message.id);
+      return;
+    }
+    if (payloadBytes > 64 * 1024) {
+      this.sendError(socket, "too_large", "bot message exceeds 65536 bytes", state.peerId, message.id);
+      return;
+    }
+    if (!this.authorizeSend(state.peerId ?? "", incoming.to, message.device_id)) {
+      this.sendError(socket, "permission_denied", "these bots may not message each other", state.peerId, message.id);
+      return;
+    }
+
+    const now = Date.now();
+    const stored: RelayBotMessage = {
+      ...incoming,
+      from: state.peerId ?? "",
+      device_id: message.device_id ?? incoming.device_id,
+      created_at: incoming.created_at > 0 ? incoming.created_at : now,
+      expires_at: incoming.expires_at ?? now + 7 * 24 * 60 * 60 * 1000,
+    };
+    const box = this.mailboxes.get(stored.to) ?? [];
+    box.push(stored);
+    this.mailboxes.set(stored.to, box);
+    this.send(socket, { type: "msg_sent", to: state.peerId, message: stored, id: message.id ?? randomUUID() });
+
+    // The real relay pushes immediately to an online recipient but keeps a copy for reliability.
+    const target = this.peers.get(stored.to);
+    if (target !== undefined) {
+      target.socket.send(
+        JSON.stringify({
+          v: 1,
+          type: "msg_deliver",
+          to: stored.to,
+          message: stored,
+          id: randomUUID(),
+        }),
+      );
+    }
+  }
+
+  private purgeExpired(): void {
+    const now = Date.now();
+    for (const [botId, box] of this.mailboxes) {
+      const kept = box.filter((entry) => (entry.expires_at ?? Number.POSITIVE_INFINITY) > now);
+      if (kept.length === 0) this.mailboxes.delete(botId);
+      else this.mailboxes.set(botId, kept);
+    }
+  }
+
+  private handleMsgInbox(socket: WebSocket, state: ConnectionState, message: Envelope): void {
+    this.purgeExpired();
+    const botId = state.peerId ?? "";
+    const box = this.mailboxes.get(botId) ?? [];
+    const ackIds = Array.isArray(message.ack_ids) ? message.ack_ids : [];
+    if (ackIds.length > 0) {
+      const remove = new Set(ackIds.filter((id): id is string => typeof id === "string"));
+      const remaining = box.filter((entry) => !remove.has(entry.id));
+      if (remaining.length === 0) this.mailboxes.delete(botId);
+      else this.mailboxes.set(botId, remaining);
+      box.length = 0;
+      box.push(...remaining);
+    }
+    const requested = typeof message.limit === "number" ? message.limit : 50;
+    const limit = Math.max(1, Math.min(100, Math.trunc(requested)));
+    const selected = [...box].sort((a, b) => a.created_at - b.created_at).slice(0, limit);
+    if (message.consume === true && selected.length > 0) {
+      const taken = new Set(selected.map((entry) => entry.id));
+      const remaining = box.filter((entry) => !taken.has(entry.id));
+      if (remaining.length === 0) this.mailboxes.delete(botId);
+      else this.mailboxes.set(botId, remaining);
+    }
+    this.send(socket, {
+      type: "msg_list",
+      to: botId,
+      messages: selected,
+      count: selected.length,
+      id: message.id ?? randomUUID(),
+    });
+  }
+
+  private ackMessages(botId: string, ids: unknown): string[] {
+    this.purgeExpired();
+    const box = this.mailboxes.get(botId);
+    if (box === undefined) return [];
+    const pending = new Set(box.map((entry) => entry.id));
+    const acked = (Array.isArray(ids) ? ids : [])
+      .filter((id): id is string => typeof id === "string" && pending.has(id))
+      .filter((id, index, all) => all.indexOf(id) === index);
+    if (acked.length > 0) {
+      const remove = new Set(acked);
+      const remaining = box.filter((entry) => !remove.has(entry.id));
+      if (remaining.length === 0) this.mailboxes.delete(botId);
+      else this.mailboxes.set(botId, remaining);
+    }
+    return acked;
   }
 
   private async handleHello(socket: WebSocket, state: ConnectionState, message: Envelope): Promise<void> {
@@ -352,9 +636,10 @@ export class MockRelay {
     }
     state.authed = true;
     state.peerId = message.from;
+    state.role = typeof message.role === "string" ? message.role : "bot";
     const peer: Peer = {
       peerId: message.from,
-      role: typeof message.role === "string" ? message.role : "bot",
+      role: state.role,
       socket,
       publicKey,
     };

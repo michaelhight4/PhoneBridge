@@ -42,6 +42,17 @@ export interface Envelope {
   error?: { code?: string; message?: string } | string;
   code?: string;
   offer?: Record<string, unknown>;
+  device_id?: string;
+  device_name?: string;
+  peers?: RelayPeerEntry[];
+  count?: number;
+  limit?: number;
+  consume?: boolean;
+  ids?: string[];
+  ack_ids?: string[];
+  created_at?: number;
+  message?: RelayBotMessage;
+  messages?: RelayBotMessage[];
   new_url?: string;
   token?: string;
   [key: string]: unknown;
@@ -71,6 +82,31 @@ export interface PairingLookup {
   expires: number | undefined;
 }
 
+/** One paired bot as published by a device, matching `core` `RelayPeerEntry`. */
+export interface RelayPeerEntry {
+  peer_id: string;
+  name: string;
+  public_key: string;
+  fingerprint?: string;
+  device_id?: string;
+  device_name?: string;
+  enabled?: boolean;
+  can_message?: boolean;
+  online?: boolean;
+}
+
+/** One stored bot message, matching `core` `RelayBotMessage`. */
+export interface RelayBotMessage {
+  id: string;
+  from: string;
+  from_name?: string;
+  to: string;
+  device_id?: string;
+  created_at: number;
+  expires_at?: number;
+  payload: string;
+}
+
 type Handler<T> = (value: T) => void;
 
 interface Waiter {
@@ -90,6 +126,7 @@ export class RelayConnection {
   private closed = false;
   private info: RelayInfo = { relayId: undefined, limits: undefined, moved: false };
   private envelopeHandlers = new Set<Handler<Envelope>>();
+  private botMessageHandlers = new Set<Handler<RelayBotMessage>>();
   private errorHandlers = new Set<Handler<PhoneBridgeError>>();
   private moveHandlers = new Set<Handler<Envelope>>();
   private closeHandlers = new Set<Handler<{ code: number; reason: string }>>();
@@ -114,6 +151,12 @@ export class RelayConnection {
   onEnvelope(handler: Handler<Envelope>): () => void {
     this.envelopeHandlers.add(handler);
     return () => this.envelopeHandlers.delete(handler);
+  }
+
+  /** Live `msg_deliver` pushes. Handlers run only for well-formed messages addressed to this bot. */
+  onBotMessage(handler: Handler<RelayBotMessage>): () => void {
+    this.botMessageHandlers.add(handler);
+    return () => this.botMessageHandlers.delete(handler);
   }
 
   onRelayError(handler: Handler<PhoneBridgeError>): () => void {
@@ -305,6 +348,109 @@ export class RelayConnection {
     };
   }
 
+  /** Bot-to-bot ACL: asks the relay which paired bots this bot may message. */
+  async listPeers(deviceId?: string, timeoutMs = 10_000): Promise<RelayPeerEntry[]> {
+    const id = randomUUID();
+    this.sendRaw({
+      v: 1,
+      type: "peers_list",
+      from: this.options.identity.peerId,
+      id,
+      ...(deviceId === undefined ? {} : { device_id: deviceId }),
+    });
+    const reply = await this.waitFor(
+      (message) =>
+        (message.type === "peers_result" || message.type === "error") &&
+        (message.id === undefined || message.id === id),
+      timeoutMs,
+      "peers_list",
+    );
+    if (reply.type === "error") throw this.envelopeError(reply);
+    if (!Array.isArray(reply.peers)) {
+      throw new PhoneBridgeError("relay_error", "relay peers_result has no peers list");
+    }
+    return reply.peers.map(readPeerEntry);
+  }
+
+  /** Stores one encrypted bot message in the recipient's mailbox. */
+  async sendBotMessage(
+    message: RelayBotMessage,
+    deviceId?: string,
+    timeoutMs = 10_000,
+  ): Promise<RelayBotMessage> {
+    const id = randomUUID();
+    this.sendRaw({
+      v: 1,
+      type: "msg_send",
+      from: this.options.identity.peerId,
+      id,
+      ...(deviceId === undefined ? {} : { device_id: deviceId }),
+      message,
+    });
+    const reply = await this.waitFor(
+      (candidate) =>
+        (candidate.type === "msg_sent" || candidate.type === "error") &&
+        (candidate.id === undefined || candidate.id === id),
+      timeoutMs,
+      "msg_send",
+    );
+    if (reply.type === "error") throw this.envelopeError(reply);
+    if (reply.message === undefined) {
+      throw new PhoneBridgeError("relay_error", "relay msg_sent has no message");
+    }
+    return readBotMessage(reply.message);
+  }
+
+  /** Reads (and optionally consumes) this bot's store-and-forward mailbox. */
+  async readBotInbox(
+    options: { limit?: number; consume?: boolean; ackIds?: string[]; deviceId?: string } = {},
+    timeoutMs = 10_000,
+  ): Promise<RelayBotMessage[]> {
+    const id = randomUUID();
+    this.sendRaw({
+      v: 1,
+      type: "msg_inbox",
+      from: this.options.identity.peerId,
+      id,
+      ...(options.deviceId === undefined ? {} : { device_id: options.deviceId }),
+      ...(options.limit === undefined ? {} : { limit: options.limit }),
+      ...(options.consume === undefined ? {} : { consume: options.consume }),
+      ...(options.ackIds === undefined ? {} : { ack_ids: options.ackIds }),
+    });
+    const reply = await this.waitFor(
+      (candidate) =>
+        (candidate.type === "msg_list" || candidate.type === "error") &&
+        (candidate.id === undefined || candidate.id === id),
+      timeoutMs,
+      "msg_inbox",
+    );
+    if (reply.type === "error") throw this.envelopeError(reply);
+    const messages = Array.isArray(reply.messages) ? reply.messages : [];
+    return messages.map(readBotMessage);
+  }
+
+  /** Acknowledges live-delivered message ids so the relay removes them from the mailbox. */
+  async ackBotMessages(ids: string[], deviceId?: string, timeoutMs = 10_000): Promise<string[]> {
+    const id = randomUUID();
+    this.sendRaw({
+      v: 1,
+      type: "msg_ack",
+      from: this.options.identity.peerId,
+      id,
+      ...(deviceId === undefined ? {} : { device_id: deviceId }),
+      ids,
+    });
+    const reply = await this.waitFor(
+      (candidate) =>
+        (candidate.type === "msg_acked" || candidate.type === "error") &&
+        (candidate.id === undefined || candidate.id === id),
+      timeoutMs,
+      "msg_ack",
+    );
+    if (reply.type === "error") throw this.envelopeError(reply);
+    return Array.isArray(reply.ack_ids) ? reply.ack_ids.filter((entry): entry is string => typeof entry === "string") : [];
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;
@@ -374,6 +520,24 @@ export class RelayConnection {
         this.info.moved = true;
         for (const handler of this.moveHandlers) handler(message);
         break;
+      case "msg_deliver": {
+        if (message.message === undefined) return;
+        let delivered: RelayBotMessage;
+        try {
+          delivered = readBotMessage(message.message);
+        } catch {
+          return;
+        }
+        if (delivered.to !== this.options.identity.peerId) return;
+        for (const handler of this.botMessageHandlers) {
+          try {
+            handler(delivered);
+          } catch (error) {
+            this.dispatchError(new PhoneBridgeError("internal", `bot message handler failed: ${String(error)}`));
+          }
+        }
+        break;
+      }
       case "challenge":
       case "hello_ok":
       case "pair_offer":
@@ -456,6 +620,63 @@ function relayErrorCode(message: Envelope): string | undefined {
 
 function normalizeLookupCode(code: string): string {
   return code.trim().toUpperCase();
+}
+
+function readPeerEntry(value: unknown): RelayPeerEntry {
+  if (typeof value !== "object" || value === null) {
+    throw new PhoneBridgeError("relay_error", "relay peers_result has a malformed peer");
+  }
+  const entry = value as Record<string, unknown>;
+  if (typeof entry["peer_id"] !== "string" || typeof entry["name"] !== "string" || typeof entry["public_key"] !== "string") {
+    throw new PhoneBridgeError("relay_error", "relay peer needs peer_id, name and public_key");
+  }
+  return {
+    peer_id: entry["peer_id"],
+    name: entry["name"],
+    public_key: entry["public_key"],
+    ...optionalString(entry, "fingerprint"),
+    ...optionalString(entry, "device_id"),
+    ...optionalString(entry, "device_name"),
+    ...optionalBoolean(entry, "enabled"),
+    ...optionalBoolean(entry, "can_message"),
+    ...optionalBoolean(entry, "online"),
+  };
+}
+
+function readBotMessage(value: unknown): RelayBotMessage {
+  if (typeof value !== "object" || value === null) {
+    throw new PhoneBridgeError("relay_error", "relay sent a malformed bot message");
+  }
+  const message = value as Record<string, unknown>;
+  const createdAt = message["created_at"];
+  if (
+    typeof message["id"] !== "string" ||
+    typeof message["from"] !== "string" ||
+    typeof message["to"] !== "string" ||
+    typeof message["payload"] !== "string" ||
+    typeof createdAt !== "number" ||
+    !Number.isFinite(createdAt)
+  ) {
+    throw new PhoneBridgeError("relay_error", "bot message needs id, from, to, created_at and payload");
+  }
+  return {
+    id: message["id"],
+    from: message["from"],
+    to: message["to"],
+    created_at: createdAt,
+    payload: message["payload"],
+    ...optionalString(message, "from_name"),
+    ...optionalString(message, "device_id"),
+    ...(typeof message["expires_at"] === "number" ? { expires_at: message["expires_at"] } : {}),
+  };
+}
+
+function optionalString(record: Record<string, unknown>, key: string): Record<string, string> {
+  return typeof record[key] === "string" ? { [key]: record[key] as string } : {};
+}
+
+function optionalBoolean(record: Record<string, unknown>, key: string): Record<string, boolean> {
+  return typeof record[key] === "boolean" ? { [key]: record[key] as boolean } : {};
 }
 
 /** Accepts a base64url or hex SHA-256 pin and returns the 32 raw bytes. */

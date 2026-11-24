@@ -5,7 +5,9 @@ import dev.phonebridge.core.ProtocolException
 import dev.phonebridge.core.crypto.HelloAuth
 import dev.phonebridge.core.identity.Identity
 import dev.phonebridge.core.model.EnvelopeCodec
+import dev.phonebridge.core.model.RelayBotMessage
 import dev.phonebridge.core.model.RelayEnvelope
+import dev.phonebridge.core.model.RelayPeerEntry
 import dev.phonebridge.core.model.RelayType
 import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.relay.RelayConfig
@@ -118,6 +120,9 @@ class RelayClient(private val config: RelayClientConfig) {
 
     var onRoute: ((RelayEnvelope) -> Unit)? = null
     var onPairOffer: ((RelayEnvelope) -> Unit)? = null
+    var onPeersResult: ((RelayEnvelope) -> Unit)? = null
+    var onMsgList: ((RelayEnvelope) -> Unit)? = null
+    var onMsgDeliver: ((RelayEnvelope) -> Unit)? = null
     var onRelayMoved: ((RelayMovedEvent) -> Unit)? = null
     var onError: ((RelayClientError) -> Unit)? = null
     var onStateChanged: ((RelayClientState, String?) -> Unit)? = null
@@ -184,6 +189,67 @@ class RelayClient(private val config: RelayClientConfig) {
 
     fun pairLookup(code: String) {
         sendJson(RelayEnvelope.pairLookup(from = peerId, code = code))
+    }
+
+    /** Device -> relay: publish the paired bots and their messaging switches. */
+    fun peersSync(
+        deviceName: String,
+        peers: List<RelayPeerEntry>,
+        id: String = RelayEnvelope.newId(),
+    ): String {
+        sendJson(
+            RelayEnvelope.peersSync(
+                from = peerId,
+                deviceName = deviceName,
+                deviceId = peerId,
+                peers = peers,
+                id = id,
+            ),
+        )
+        return id
+    }
+
+    /** Bot -> relay: ask which other bots this bot may message. */
+    fun peersList(deviceId: String? = null, limit: Int? = null, id: String = RelayEnvelope.newId()): String {
+        sendJson(RelayEnvelope.peersList(from = peerId, deviceId = deviceId, limit = limit, id = id))
+        return id
+    }
+
+    /** Bot -> relay: store an encrypted message in the recipient's mailbox. */
+    fun msgSend(
+        message: RelayBotMessage,
+        deviceId: String? = null,
+        id: String = RelayEnvelope.newId(),
+    ): String {
+        sendJson(RelayEnvelope.msgSend(from = peerId, message = message, deviceId = deviceId, id = id))
+        return id
+    }
+
+    /** Bot -> relay: list or consume the messages waiting for this bot. */
+    fun msgInbox(
+        limit: Int? = null,
+        consume: Boolean? = null,
+        ackIds: List<String>? = null,
+        deviceId: String? = null,
+        id: String = RelayEnvelope.newId(),
+    ): String {
+        sendJson(
+            RelayEnvelope.msgInbox(
+                from = peerId,
+                limit = limit,
+                consume = consume,
+                ackIds = ackIds,
+                deviceId = deviceId,
+                id = id,
+            ),
+        )
+        return id
+    }
+
+    /** Bot -> relay: acknowledge messages that were delivered out of band. */
+    fun msgAck(ids: List<String>, deviceId: String? = null, id: String = RelayEnvelope.newId()): String {
+        sendJson(RelayEnvelope.msgAck(from = peerId, ids = ids, deviceId = deviceId, id = id))
+        return id
     }
 
     fun sendRaw(envelope: RelayEnvelope): Boolean = sendJson(envelope)
@@ -418,6 +484,18 @@ class RelayClient(private val config: RelayClientConfig) {
                 RelayType.ERROR -> onError?.invoke(parseError(envelope))
                 RelayType.PAIR_OFFER -> {
                     onPairOffer?.invoke(envelope)
+                    onMessage?.invoke(envelope)
+                }
+                RelayType.PEERS_RESULT -> {
+                    onPeersResult?.invoke(envelope)
+                    onMessage?.invoke(envelope)
+                }
+                RelayType.MSG_LIST -> {
+                    onMsgList?.invoke(envelope)
+                    onMessage?.invoke(envelope)
+                }
+                RelayType.MSG_DELIVER -> {
+                    onMsgDeliver?.invoke(envelope)
                     onMessage?.invoke(envelope)
                 }
                 else -> onMessage?.invoke(envelope)

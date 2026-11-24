@@ -48,10 +48,14 @@ object X25519 {
 
     fun publicKeyOf(privateKey: ByteArray): ByteArray = fromPrivateKey(privateKey).publicKey
 
+    /** Alias for [sharedSecret], used by the higher-level E2E formats as `ecdh`. */
+    fun ecdh(privateKey: ByteArray, publicKey: ByteArray): ByteArray = sharedSecret(privateKey, publicKey)
+
     /**
      * X25519(our private, their public). Rejects low-order public keys: RFC 7748 says the output of an
      * all-zero shared secret must be rejected.
      */
+
     fun sharedSecret(privateKey: ByteArray, publicKey: ByteArray): ByteArray {
         if (privateKey.size != DHLEN) throw CryptoException("x25519 private key must be $DHLEN bytes")
         if (publicKey.size != DHLEN) throw CryptoException("x25519 public key must be $DHLEN bytes")

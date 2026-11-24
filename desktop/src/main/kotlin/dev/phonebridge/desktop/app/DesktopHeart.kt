@@ -4,6 +4,8 @@ import dev.phonebridge.core.crypto.Primitives
 import dev.phonebridge.core.identity.Identity
 import dev.phonebridge.core.identity.PeerIds
 import dev.phonebridge.core.model.RelayEnvelope
+import dev.phonebridge.core.model.RelayPeerEntry
+import dev.phonebridge.core.pairing.BotRecord
 import dev.phonebridge.core.util.B64Url
 import dev.phonebridge.relay.Relay
 import dev.phonebridge.relay.RelayConfig
@@ -11,6 +13,7 @@ import dev.phonebridge.relay.RelayHandle
 import dev.phonebridge.relay.TlsConfig
 import dev.phonebridge.relay.client.RelayClient
 import dev.phonebridge.relay.client.RelayClientConfig
+import dev.phonebridge.relay.client.RelayClientState
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -43,6 +46,10 @@ class DesktopHeart(
     /** Pin for the client connection in use (the heart's own fingerprint, or the chosen relay's pin). */
     @Volatile
     private var clientPin: String? = null
+
+    /** Set by the bridge: called on every (re)connect so the relay gets a fresh `peers_sync`. */
+    @Volatile
+    var onConnected: (() -> Unit)? = null
 
     override fun currentPin(): String? = synchronized(lock) { relay?.fingerprint ?: clientPin }
 
@@ -99,6 +106,25 @@ class DesktopHeart(
         return runCatching { current.pairStore(code, offer); true }.getOrDefault(false)
     }
 
+    /** Publishes the paired bots and their messaging switches to the relay. */
+    fun syncPeers(deviceName: String, bots: List<BotRecord>): Boolean {
+        val current = synchronized(lock) { client } ?: return false
+        val peers = bots.map { bot ->
+            RelayPeerEntry(
+                peerId = bot.botId,
+                name = bot.name,
+                publicKey = bot.publicKey,
+                fingerprint = bot.fingerprint,
+                deviceId = identity.peerId,
+                deviceName = deviceName,
+                enabled = bot.enabled,
+                canMessage = bot.canMessage,
+            )
+        }
+        return runCatching { current.peersSync(deviceName = deviceName, peers = peers); true }
+            .getOrDefault(false)
+    }
+
     fun relayStats(): String {
         val handle = synchronized(lock) { relay } ?: return "Heart not running here"
         val stats = handle.stats()
@@ -145,9 +171,14 @@ class DesktopHeart(
             ),
         )
         newClient.onRoute = { envelope -> onEnvelope(envelope) }
-        newClient.onStateChanged = { _, _ -> onStateChange(url, newClient.isConnected) }
-        newClient.start()
+        newClient.onStateChanged = { next, _ ->
+            if (next == RelayClientState.CONNECTED) onConnected?.invoke()
+            onStateChange(url, newClient.isConnected)
+        }
+        // Publish the client before starting it: the CONNECTED callback fires on the client's own
+        // thread and needs to reach syncPeers() through this field.
         client = newClient
+        newClient.start()
         onStateChange(url, newClient.isConnected)
     }
 

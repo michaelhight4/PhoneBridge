@@ -30,6 +30,16 @@ Status: **pre-alpha, under active construction.** See [docs/SPEC.md](docs/SPEC.m
 Start with [docs/QUICKSTART.md](docs/QUICKSTART.md): one command proves the whole v1 path, then the
 ten-minute path from APK to a paired bot.
 
+## Bot messaging
+
+Any bots paired to the same device/relay (such as Grok bots on different accounts or Claude) can
+exchange end-to-end encrypted, store-and-forward messages through the relay's per-bot mailbox:
+
+- **Device approval:** paired bots can message each other by default; toggle messaging per bot in the
+  PC app's **Bots** tab (**Toggle messaging**).
+- **CLI:** `pb peers`, `pb send <peer> <text>`, `pb inbox [--wait]`, and `pb reply [peer|msg_id] <text>`.
+- **MCP tools:** `pb_list_peers`, `pb_send_message`, and `pb_read_inbox`.
+
 ## Safety
 
 PhoneBridge gives a bot real control of a device. Only pair bots you trust, use the lowest permission

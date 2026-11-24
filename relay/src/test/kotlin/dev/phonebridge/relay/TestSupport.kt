@@ -26,6 +26,12 @@ object TestSupport {
         maxEnvelopeBytes: Int = 16 * 1024 * 1024,
         rateLimit: RateLimitConfig = RateLimitConfig(),
         pairMailboxTtlMs: Long = 10 * 60 * 1000,
+        maxBotMessageBytes: Int = 64 * 1024,
+        maxMailboxMessagesPerBot: Int = 100,
+        maxMailboxBytesPerBot: Int = 1024 * 1024,
+        maxTotalMailboxMessages: Int = 5000,
+        botMessageTtlMs: Long = 7L * 24 * 60 * 60 * 1000,
+        botMessageRateLimit: RateLimitConfig = RateLimitConfig(maxMessages = 60, windowMs = 60_000, burst = 20),
         moveSecret: String? = null,
         dataDir: String? = null,
         helloTimeoutMs: Int = 30_000,
@@ -39,6 +45,12 @@ object TestSupport {
             maxEnvelopeBytes = maxEnvelopeBytes,
             rateLimit = rateLimit,
             pairMailboxTtlMs = pairMailboxTtlMs,
+            maxBotMessageBytes = maxBotMessageBytes,
+            maxMailboxMessagesPerBot = maxMailboxMessagesPerBot,
+            maxMailboxBytesPerBot = maxMailboxBytesPerBot,
+            maxTotalMailboxMessages = maxTotalMailboxMessages,
+            botMessageTtlMs = botMessageTtlMs,
+            botMessageRateLimit = botMessageRateLimit,
             moveSecret = moveSecret,
             dataDir = dataDir,
             helloTimeoutMs = helloTimeoutMs,
@@ -99,6 +111,8 @@ object TestSupport {
         }
 
         fun poll(): T? = queue.poll()
+
+        fun clear() = queue.clear()
 
         fun size(): Int = queue.size
     }

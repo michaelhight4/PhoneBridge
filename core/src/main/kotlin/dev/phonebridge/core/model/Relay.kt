@@ -55,10 +55,81 @@ object RelayType {
     /** Relay -> bot: the offer that was stored, released once. */
     const val PAIR_OFFER = "pair_offer"
 
+    /** Device -> relay: publish the paired bots that may use bot-to-bot messaging. */
+    const val PEERS_SYNC = "peers_sync"
+
+    /** Relay -> device: the peer list was stored. */
+    const val PEERS_SYNCED = "peers_synced"
+
+    /** Bot -> relay: ask which other paired bots it may message. */
+    const val PEERS_LIST = "peers_list"
+
+    /** Relay -> bot: the bots this bot may message. */
+    const val PEERS_RESULT = "peers_result"
+
+    /** Bot -> relay: store an end-to-end encrypted message in the recipient's mailbox. */
+    const val MSG_SEND = "msg_send"
+
+    /** Relay -> bot: the message was stored. */
+    const val MSG_SENT = "msg_sent"
+
+    /** Bot -> relay: read (and optionally consume) the bot's mailbox. */
+    const val MSG_INBOX = "msg_inbox"
+
+    /** Relay -> bot: the messages in the bot's mailbox. */
+    const val MSG_LIST = "msg_list"
+
+    /** Relay -> bot: a newly arrived message, pushed while the bot is online. */
+    const val MSG_DELIVER = "msg_deliver"
+
+    /** Bot -> relay: acknowledge delivered message ids. */
+    const val MSG_ACK = "msg_ack"
+
+    /** Relay -> bot: the acknowledgement was applied. */
+    const val MSG_ACKED = "msg_acked"
+
     val ALL: Set<String> = setOf(
         HELLO, ROUTE, PING, PONG, ERROR, RELAY_MOVED, CHALLENGE, HELLO_OK, PAIR_STORE, PAIR_STORED, PAIR_LOOKUP, PAIR_OFFER,
+        PEERS_SYNC, PEERS_SYNCED, PEERS_LIST, PEERS_RESULT, MSG_SEND, MSG_SENT, MSG_INBOX, MSG_LIST, MSG_DELIVER, MSG_ACK,
+        MSG_ACKED,
     )
 }
+
+/** One paired bot as published by a device, for relay-side bot-to-bot ACLs. */
+@Serializable
+data class RelayPeerEntry(
+    @SerialName("peer_id")
+    val peerId: String,
+    val name: String,
+    @SerialName("public_key")
+    val publicKey: String,
+    val fingerprint: String? = null,
+    @SerialName("device_id")
+    val deviceId: String? = null,
+    @SerialName("device_name")
+    val deviceName: String? = null,
+    val enabled: Boolean = true,
+    @SerialName("can_message")
+    val canMessage: Boolean = true,
+    val online: Boolean? = null,
+)
+
+/** One stored bot message. [payload] is a base64url [dev.phonebridge.core.crypto.BotMessageCrypto] frame. */
+@Serializable
+data class RelayBotMessage(
+    val id: String,
+    val from: String,
+    @SerialName("from_name")
+    val fromName: String? = null,
+    val to: String,
+    @SerialName("device_id")
+    val deviceId: String? = null,
+    @SerialName("created_at")
+    val createdAt: Long,
+    @SerialName("expires_at")
+    val expiresAt: Long? = null,
+    val payload: String,
+)
 
 /** The rate/size limits a relay reports in `hello_ok`. */
 @Serializable
@@ -116,6 +187,22 @@ data class RelayEnvelope(
     @SerialName("new_url")
     val newUrl: String? = null,
     val token: String? = null,
+    // bot-to-bot messaging
+    @SerialName("device_id")
+    val deviceId: String? = null,
+    @SerialName("device_name")
+    val deviceName: String? = null,
+    val peers: List<RelayPeerEntry>? = null,
+    val count: Int? = null,
+    val limit: Int? = null,
+    val consume: Boolean? = null,
+    val ids: List<String>? = null,
+    @SerialName("ack_ids")
+    val ackIds: List<String>? = null,
+    @SerialName("created_at")
+    val createdAt: Long? = null,
+    val message: RelayBotMessage? = null,
+    val messages: List<RelayBotMessage>? = null,
 ) {
     /** True for a type this protocol version understands; unknown types must be ignored, not fatal. */
     val isKnownType: Boolean
@@ -239,6 +326,138 @@ data class RelayEnvelope(
             code = code,
             offer = offer,
             expires = expires,
+            id = id,
+        )
+
+        fun peersSync(
+            from: String,
+            peers: List<RelayPeerEntry>,
+            deviceName: String? = null,
+            deviceId: String? = null,
+            id: String = newId(),
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.PEERS_SYNC,
+            from = from,
+            deviceId = deviceId,
+            deviceName = deviceName,
+            peers = peers,
+            id = id,
+        )
+
+        fun peersSynced(to: String, count: Int, id: String = newId()): RelayEnvelope = RelayEnvelope(
+            type = RelayType.PEERS_SYNCED,
+            to = to,
+            count = count,
+            id = id,
+        )
+
+        fun peersList(
+            from: String,
+            deviceId: String? = null,
+            limit: Int? = null,
+            id: String = newId(),
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.PEERS_LIST,
+            from = from,
+            deviceId = deviceId,
+            limit = limit,
+            id = id,
+        )
+
+        fun peersResult(
+            to: String,
+            peers: List<RelayPeerEntry>,
+            deviceId: String? = null,
+            id: String? = null,
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.PEERS_RESULT,
+            to = to,
+            deviceId = deviceId,
+            peers = peers,
+            count = peers.size,
+            id = id,
+        )
+
+        fun msgSend(
+            from: String,
+            message: RelayBotMessage,
+            deviceId: String? = null,
+            id: String = newId(),
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.MSG_SEND,
+            from = from,
+            deviceId = deviceId,
+            message = message,
+            id = id,
+        )
+
+        fun msgSent(to: String, message: RelayBotMessage, id: String = newId()): RelayEnvelope = RelayEnvelope(
+            type = RelayType.MSG_SENT,
+            to = to,
+            message = message,
+            id = id,
+        )
+
+        fun msgInbox(
+            from: String,
+            limit: Int? = null,
+            consume: Boolean? = null,
+            ackIds: List<String>? = null,
+            deviceId: String? = null,
+            id: String = newId(),
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.MSG_INBOX,
+            from = from,
+            deviceId = deviceId,
+            limit = limit,
+            consume = consume,
+            ackIds = ackIds,
+            id = id,
+        )
+
+        fun msgList(
+            to: String,
+            messages: List<RelayBotMessage>,
+            count: Int = messages.size,
+            id: String = newId(),
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.MSG_LIST,
+            to = to,
+            messages = messages,
+            count = count,
+            id = id,
+        )
+
+        fun msgDeliver(to: String, message: RelayBotMessage, id: String = newId()): RelayEnvelope = RelayEnvelope(
+            type = RelayType.MSG_DELIVER,
+            to = to,
+            message = message,
+            id = id,
+        )
+
+        fun msgAck(
+            from: String,
+            ids: List<String>,
+            deviceId: String? = null,
+            id: String = newId(),
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.MSG_ACK,
+            from = from,
+            deviceId = deviceId,
+            ids = ids,
+            id = id,
+        )
+
+        fun msgAcked(
+            to: String,
+            ackIds: List<String>,
+            count: Int = ackIds.size,
+            id: String = newId(),
+        ): RelayEnvelope = RelayEnvelope(
+            type = RelayType.MSG_ACKED,
+            to = to,
+            ackIds = ackIds,
+            count = count,
             id = id,
         )
     }

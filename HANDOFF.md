@@ -3,6 +3,32 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-24 10:10 AM: GitHub push, cloud-bot reachability, live test setup (Grok Bot)
+
+- **GitHub**: `origin` = https://github.com/michaelhight4/PhoneBridge. GitHub's auto-created initial
+  commit (README + LICENSE) was merged with `-X ours` (d9600f3), so the project README and the MIT
+  LICENSE (Gary Hight) stay. Pushed main and all 16 `pb/*` branches without force. `gh` is still not logged in,
+  so the v0.1.0 release is not created yet.
+- **Real gap fixed (1d911da)**: the bot stored the relay URL the device *advertised* (a LAN or 127.0.0.1
+  address), so a bot outside the LAN could not reconnect. `phonebridge pair ... --relay <url>` now also
+  overrides the relay in a link or `.pbpair` offer, and the URL the bot actually used is the one stored.
+  The advertised cert pin is kept only for the advertised URL; any other URL is checked against system
+  CAs. Has a new vitest test; mcp is now at 58/58.
+- **Zips** are now written with `tar.exe` (forward-slash entries). PowerShell 5's Compress-Archive wrote
+  backslash paths that break on Linux/macOS. `scripts/package_windows.ps1` was updated. The bot connector build is
+  `dist_itch/PhoneBridge-bot-connector-v0.1.0.zip` (mcp `dist/` + package files; run `npm ci --omit=dev`).
+- **Reachability for a cloud bot**: the desktop heart listens on :8443 with a self-signed cert and advertises
+  a local address. A free cloudflared quick tunnel (no account, `cloudflared tunnel --url
+  https://127.0.0.1:8443 --no-tls-verify`) gives a public `wss://<random>.trycloudflare.com` with a real
+  certificate. The relay only sees encrypted envelopes, and pairing still needs Allow on the device. The
+  quick-tunnel URL changes every time cloudflared restarts, and it stops when the PC sleeps or reboots.
+- **How a user gives a bot access (existing flow)**:
+  - PC: PhoneBridge window > **Pair a bot** > **New code** (or **Copy link** / **Save .pbpair file**).
+    Give the code to the bot. The bot runs `phonebridge pair <code> --relay <reachable relay URL>`, the request
+    appears under "Approve it below", then pick **Level** and click **Allow**.
+  - Phone: **Relay** > Custom URL = the same reachable `wss://` URL (pin blank) > Save, then **Pair a bot**,
+    and give the bot the code or link. **Allow this bot?** pops up, pick a level and tap Allow.
+
 ## 2026-11-24 9:40 AM: itch.io packaging (Grok Bot)
 
 - **Scripts** (committed): `scripts/package_android.ps1` builds `assembleRelease`, then runs zipalign and apksigner

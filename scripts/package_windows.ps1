@@ -32,6 +32,8 @@ License: MIT (LICENSE.txt). Source: https://github.com/michaelhight4/PhoneBridge
 "@ | Set-Content (Join-Path $work 'PhoneBridge\README.txt')
   $zip = Join-Path $out "PhoneBridge-windows-v$Version.zip"
   if (Test-Path $zip) { Remove-Item $zip }
-  Compress-Archive -Path (Join-Path $work 'PhoneBridge') -DestinationPath $zip -CompressionLevel Optimal
+  # tar.exe writes forward-slash zip entries (Compress-Archive on PowerShell 5 writes backslashes).
+  & tar.exe -a -c -f $zip -C $work PhoneBridge
+  if ($LASTEXITCODE -ne 0) { throw 'zip failed' }
   Get-Item $zip | Select-Object FullName, Length
 } finally { Pop-Location }

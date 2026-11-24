@@ -3,6 +3,25 @@
 Newest entries at the top. Each entry: date/time (America/Chicago), lane, model, task, what was done,
 what is left, how to build/test, blockers.
 
+## 2026-11-24 9:40 AM: itch.io packaging (Grok Bot)
+
+- **Scripts** (committed): `scripts/package_android.ps1` builds `assembleRelease`, then runs zipalign and apksigner
+  (v2+v3) with the local release key in `C:\Users\seeth\PhoneBridge_keys` (outside the repo; back that folder up, since
+  losing it means future APKs can't update existing installs). `scripts/package_windows.ps1` runs `installDist` and then
+  `jpackage --type app-image` with a jlinked runtime (java.base, desktop, naming, net.http, sql, logging,
+  management, jdk.crypto.ec, jdk.unsupported), so users don't need Java. `scripts/push_itch.ps1` runs `butler push`
+  to the `android` and `windows` channels (`-Target user/phonebridge`, `--userversion`, `-DryRun`).
+- **Outputs** in `dist_itch/` (gitignored): `PhoneBridge-android-v0.1.0.apk` (3,651,853 bytes, release,
+  dev.phonebridge.app, minSdk 26, targetSdk 36, apksigner verify OK), `PhoneBridge-windows-v0.1.0.zip`
+  (45,231,570 bytes, about 61 MB unpacked: `PhoneBridge.exe`, `app/`, `runtime/`, `LICENSE.txt`, `README.txt`),
+  `ITCH_PAGE.md` (also saved as `docs/ITCH_PAGE.md`) and `push_itch.ps1`.
+- **Launch test**: I extracted the zip to a temp folder and ran `PhoneBridge.exe --smoke-ms 6000 --data-dir <temp>`. It exited 0 after starting
+  the heart on wss://<LAN IP>:8443 and connecting its own relay client. A normal launch was still running after 8 s and was then stopped.
+  The APK has not been tested on a phone or emulator.
+- **butler** v15.32.0 (signed by itch corp.) is at `C:\Users\seeth\tools\butler\butler.exe`, from the official broth URL.
+  It is not logged in. To publish: create the itch project, run `butler login` once, then
+  `dist_itch\push_itch.ps1 -Target <user>/phonebridge`.
+
 ## 2026-11-23 3:05 PM: Android SDK, merges, full build, APK (Grok Bot)
 
 - **Android SDK installed** (Gary approved): official command-line tools

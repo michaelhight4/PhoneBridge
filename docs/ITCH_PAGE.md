@@ -1,72 +1,76 @@
-# PhoneBridge — itch.io page text
+# PhoneBridge: itch.io page
 
-> Draft copy for the itch.io project page. Replace placeholders like `<GITHUB_URL>` before publishing.
+**Title:** PhoneBridge
 
-## Short description
+**Tagline (short description):** Let your own AI bot see and control your own phone and PC. End-to-end encrypted, no central server, and you approve every bot.
 
-Control your own Android phone from your own AI bot — end-to-end encrypted, no central server, with on-device consent for every bot.
+**Classification:** Tool · **Platforms:** Android, Windows · **Price:** Free (no payments) · **License:** MIT, open source
+
+---
 
 ## About
 
-**PhoneBridge** is a free, open-source (MIT) project that lets your own AI bot see and control your own Android phone from anywhere. It is built for people who want agent automation without handing their device to a central service.
+PhoneBridge is a free, open-source app that gives **your own** AI bot eyes and hands on **your own**
+Android phone and Windows PC from anywhere. It can take screenshots, read the screen, tap, swipe, type and
+open apps. At the Full level it can also install apps and run commands.
 
-PhoneBridge is **bot-agnostic**: it exposes a documented JSON API and an MCP server, so any capable agent (OpenCode, Claude-style tool agents, scripts, Home Assistant, and other MCP-capable tools) can use it.
+It works with any bot that has tools. A documented JSON API plus an MCP server means OpenCode, Claude-style
+agents, scripts and other MCP-capable bots can all use it without custom code.
 
-## How it stays in your control
+### Your device, your rules
+- **No central server, no master key.** The relay, called "the heart", runs on a device *you* pick: your PC,
+  your phone, or your own small VPS. Turn that host off and remote access stops.
+- **End-to-end encrypted** (Noise XX). The relay only forwards sealed envelopes and never sees your
+  screen or commands.
+- **You approve every bot.** Each pairing ends with an on-device **"Allow this bot?"** prompt.
+- **Per-bot permissions:** View (screenshots, screen contents, notifications), Control (tap, type, open
+  apps) or Full (install, settings, shell, files).
+- **One bot drives at a time.** The others wait in line, and a notification always names who is in control.
+  There's an activity log, an on/off switch per bot and a **Kick everyone** button.
 
-- **No central server, no master key.** The relay ("the heart") runs on a device you choose: your PC, your phone, or an optional small VPS relay you control. If that host is off, remote access stops.
-- **End-to-end encrypted.** The relay forwards encrypted envelopes; it does not read your commands or screenshots.
-- **Explicit pairing.** Every bot must be approved on-device with an "Allow this bot?" prompt. Pair using a QR code, a short code, a `phonebridge://pair?...` link, or a `.pbpair` file.
-- **Per-bot permissions.** Give each bot View, Control, or Full access. You can see who is connected, review activity, unpair a bot, or hit **Kick everyone**.
-- **One bot drives at a time.** The device shows who is in control with a persistent notification.
+## Pairing in 30 seconds
+1. Open PhoneBridge and tap **Pair a bot** (on the PC: tray icon > Pair a bot).
+2. Give your bot **one** of these:
+   - the **QR code**,
+   - the **short code** like `7K4-Q9B` (plus your relay address),
+   - the **`phonebridge://pair?...` link**, or
+   - the exported **`.pbpair` file**. You can just send it to your bot in chat.
+3. Your device asks **"Allow this bot?"** and shows the bot's name and fingerprint. Pick a permission level
+   (you can only lower what it asked for) and tap Allow.
 
-## Safety warning
+Pairing codes work **once** and expire after **10 minutes**. Each bot gets its own key, so unpairing one
+never affects the others.
 
-PhoneBridge gives a bot real control of a device. **Only pair bots you trust.**
+## Install: Android (8.0 or newer)
+1. Download **PhoneBridge-android-v0.1.0.apk** below, on your phone.
+2. Open it. If Android asks, allow installs from your browser or file manager. It's not from the Play Store.
+3. Open PhoneBridge and follow the checklist:
+   - turn on the **PhoneBridge Accessibility service**,
+   - allow notifications,
+   - exempt it from battery optimisation.
+4. Optional: grant **screen capture** for screenshots on older phones. For Full-level features (installing
+   apps, settings, shell), install and start **Shizuku** (you need to restart it after every reboot).
+5. Choose where the heart runs (this phone, your PC or a custom relay), then **Pair a bot**.
 
-- Use the lowest permission level that works.
-- **View** can see screenshots, UI trees, and notifications.
-- **Control** can tap, swipe, type, and open apps.
-- **Full** can install APKs, run shell commands, manage files/settings, and move the relay. Treat Full access as high-risk.
-- Watch the activity log and use **Kick everyone** if anything looks wrong.
+## Install: Windows 10/11 (64-bit)
+1. Download **PhoneBridge-windows-v0.1.0.zip** and extract it anywhere, for example `Documents\PhoneBridge`.
+2. Run **PhoneBridge.exe**. Java is bundled, so you don't need to install it. It starts in the system tray
+   (bottom-right, maybe under the ^ arrow).
+3. If Windows SmartScreen warns about an unknown publisher, click **More info > Run anyway**. If the
+   firewall asks, allow **private networks**, so bots on your network can reach the heart on port 8443.
+4. Tray menu > **Pair a bot**. Data is stored in `%APPDATA%\PhoneBridge`. To uninstall, quit from the tray and
+   delete the folder.
 
-There is no backdoor and no shared server. You are responsible for the bots you pair and the host running the relay.
+## Connect your bot
+Point your bot at the PhoneBridge MCP server (`mcp/` in the source) or the `phonebridge` CLI, then give it
+your pairing code, link or file. Setup snippets for OpenCode, Claude Desktop/Code and generic MCP clients
+are in `docs/API.md`.
 
-## Install (Android v1, pre-alpha)
+## Safety
+PhoneBridge gives a bot **real control** of your device. Only pair bots you trust, use the lowest level
+that works, check the activity log, and use **Kick everyone** if anything looks wrong. There is no backdoor
+and no shared server. This is a **pre-alpha** release, so expect rough edges.
 
-> PhoneBridge is pre-alpha. Expect rough edges and verify builds before installing.
-
-1. **Get the APK**
-   - Download the latest Android debug/release APK from the GitHub Releases page: `<GITHUB_URL>/releases`
-   - Or download the `assembleDebug` artifact from GitHub Actions if you are testing a development build.
-2. **Install on Android**
-   - Open the APK on your phone and allow installation from the source if Android asks.
-   - You may need to confirm installing an app from outside the Play Store.
-3. **Enable required access**
-   - Open PhoneBridge and enable the Accessibility Service when prompted.
-   - Grant screenshot/screen capture permission when requested.
-   - For Full-level features, install and start Shizuku if you want shell/APK/settings capabilities. Shizuku must be restarted after reboot.
-4. **Choose where the relay runs**
-   - Pick the device that will host the relay ("heart"). It can be your desktop or your phone.
-   - Keep that host online when you want remote access.
-5. **Pair your bot**
-   - In PhoneBridge, create a pairing QR/code/link/file.
-   - Give it to your bot through the MCP server or CLI.
-   - Confirm the on-device "Allow this bot?" prompt and choose the permission level.
-
-## Links
-
-- GitHub: `<GITHUB_URL>`
-- Spec: `<GITHUB_URL>/blob/main/docs/SPEC.md`
-- Protocol: `<GITHUB_URL>/blob/main/docs/PROTOCOL.md`
-- User guide: `<GITHUB_URL>/blob/main/docs/USER_GUIDE.md`
-- Security: `<GITHUB_URL>/blob/main/SECURITY.md`
-- License: MIT (`<GITHUB_URL>/blob/main/LICENSE`)
-
-## Project status
-
-Current v1 target:
-
-- JVM `core` + `relay` build and pass tests.
-- Android app pairs through the relay and executes core commands with permission checks, notifications, and activity log.
-- MCP server + CLI can pair and drive the phone end to end.
+## Open source
+MIT License © 2026 Gary Hight. The source, spec, protocol and security notes are on GitHub (link coming soon:
+github.com/michaelhight4/PhoneBridge).
